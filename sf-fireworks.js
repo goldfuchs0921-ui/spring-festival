@@ -27,6 +27,7 @@
   function launch(x, y) {
     if (!cv) return;
     rockets.push({ x: x, y: H, tx: x, ty: y, c: SF.pick(COLORS), t: 0 });
+    if (SF.sfx) SF.sfx.launch();
     start();
   }
 
@@ -34,6 +35,7 @@
   function text(str, cx, cy) {
     if (!cv || !str) return;
     str = String(str).slice(0, 16);
+    if (SF.sfx) SF.sfx.text();
     var lines = str.length > 8 ? [str.slice(0, Math.ceil(str.length / 2)), str.slice(Math.ceil(str.length / 2))] : [str];
     var c = document.createElement("canvas"), fs = 64, lh = 76;
     c.width = 640; c.height = lh * lines.length + 20;
@@ -66,7 +68,7 @@
       var e = 1 - Math.pow(1 - Math.min(r.t, 1), 2);
       var y = H + (r.ty - H) * e;
       ctx.fillStyle = "#ffe9b0"; ctx.beginPath(); ctx.arc(r.x, y, 2.2, 0, 7); ctx.fill();
-      if (r.t >= 1) { burst(r.tx, r.ty, r.c); return false; }
+      if (r.t >= 1) { burst(r.tx, r.ty, r.c); if (SF.sfx) SF.sfx.burst(); return false; }
       return true;
     });
 

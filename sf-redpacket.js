@@ -6,8 +6,10 @@
     return (d.getMonth() + 1) + "/" + d.getDate() + " " + p(d.getHours()) + ":" + p(d.getMinutes());
   }
   function clean(t) { return String(t || "").trim().replace(/^["“「]|["”」]$/g, ""); }
+  function fmtAmt(n) { return Number(n).toFixed(2); }
   function mtext(cd) {
-    var base = "我给你发了一个新春红包，里面写着：「" + cd.blessing + "」";
+    var amt = cd.amount != null ? "（虚拟压岁钱 " + fmtAmt(cd.amount) + "，只是红包上的数字，不是真的转账）" : "";
+    var base = "我给你发了一个新春红包" + amt + "，里面写着：「" + cd.blessing + "」";
     return cd.status === "opened" ? base + "（你已经拆开了）" : base;
   }
   async function getPool(id) { return await SF.st.get("rp_pool_" + id, []); }
@@ -41,22 +43,24 @@
       SF.setRoche(r);
       var cd = m.cardData || {}, sealed = cd.dir === "ta2me" && cd.status !== "opened";
       var card = SF.h("div", "sfc-rp " + (sealed ? "sealed" : "done"));
-      var who = cd.dir === "ta2me" ? SF.esc(cd.fromName || "TA") + " 送给你" : "你送给 " + SF.esc(cd.toName || "TA");
-      card.innerHTML = '<div class="sfc-rp-top"><span class="sfc-coin">福</span><div class="sfc-rp-t"><strong>新春红包</strong><em>' +
+      var who = (cd.dir === "ta2me" ? SF.esc(cd.fromName || "TA") + " 送给你" : "你送给 " + SF.esc(cd.toName || "TA")) + (cd.amount != null ? " · 虚拟压岁钱" : "");
+      var amtHtml = !sealed && cd.amount != null ? '<b class="sfc-amt">¥ ' + fmtAmt(cd.amount) + "</b>" : "";
+      card.innerHTML = '<div class="sfc-rp-top"><span class="sfc-coin">福</span><div class="sfc-rp-t"><strong>新春红包</strong>' + amtHtml + "<em>" +
         (sealed ? "点一下，拆开看看" : SF.esc(cd.blessing || "")) + '</em></div></div><div class="sfc-rp-bot">' + who + "</div>";
       c.replaceChildren(card);
       if (!sealed) return;
       var busy = false;
       card.onclick = async function () {
         if (busy) return; busy = true;
-        card.classList.add("open"); sparks(card);
+        card.classList.add("open"); sparks(card); if (SF.sfx) SF.sfx.packet();
         card.querySelector("em").textContent = cd.blessing || "";
+        if (cd.amount != null) card.querySelector("em").before(SF.h("b", "sfc-amt", "¥ " + fmtAmt(cd.amount)));
         await SF.wait(700);
         try {
           var nd = Object.assign({}, cd, { status: "opened", openedAt: Date.now() });
           await r.chat.updateCard({ conversationId: m.conversationId, messageId: m.id, cardData: nd, modelText: mtext(nd) });
         } catch (e) { SF.toast("红包更新失败：" + (e.message || e)); busy = false; card.classList.remove("open"); return; }
-        addRecord({ t: Date.now(), dir: "opened", who: cd.fromName || "TA", blessing: cd.blessing });
+        addRecord({ t: Date.now(), dir: "opened", who: cd.fromName || "TA", blessing: cd.blessing, amount: cd.amount });
         if (SF.fortune) SF.fortune.award("open");
       };
     },
@@ -67,14 +71,14 @@
       var conv = null;
       try { conv = await r.conversation.get(ctx.conversationId); } catch (e) {}
       var isGroup = !!(conv && conv.isGroup), members = (conv && conv.memberProfiles) || [];
-      var st = { dir: "ta2me", src: "preset", text: "", pool: [],
+      var st = { dir: "ta2me", src: "preset", text: "", amount: "", pool: [],
         cid: isGroup ? null : ((conv && conv.contactId) || ctx.contactId || (ctx.contact && ctx.contact.id) || null) };
       if (!isGroup && !st.cid) { SF.toast("没有找到这个聊天的角色"); return; }
       var L = SF.layer(document.body, "新春红包", { fixed: true });
 
       async function render() {
         st.pool = st.cid ? await getPool(st.cid) : [];
-        var h = '<p class="tip">红包里只有祝福。选择谁发、祝福从哪来。</p><div><span class="sfchip' + (st.dir === "ta2me" ? " on" : "") + '" data-d="ta2me">TA 发给我</span><span class="sfchip' + (st.dir === "me2ta" ? " on" : "") + '" data-d="me2ta">我发给 TA</span></div>';
+        var h = '<p class="tip">红包里有祝福和一个虚拟金额，金额只显示在红包上，不会计入 Roche 钱包。</p><div><span class="sfchip' + (st.dir === "ta2me" ? " on" : "") + '" data-d="ta2me">TA 发给我</span><span class="sfchip' + (st.dir === "me2ta" ? " on" : "") + '" data-d="me2ta">我发给 TA</span></div>';
         if (isGroup) {
           h += "<h4>" + (st.dir === "ta2me" ? "谁来发" : "发给谁") + "</h4><div>" + members.map(function (x) {
             return '<span class="sfchip' + (st.cid === x.id ? " on" : "") + '" data-c="' + SF.esc(x.id) + '">' + SF.esc(x.handle || x.name || x.displayName) + "</span>";
@@ -85,21 +89,32 @@
         h += opts.map(function (o) { return '<span class="sfchip' + (st.src === o[0] ? " on" : "") + '" data-s="' + o[0] + '">' + o[1] + "</span>"; }).join("") + "</div>";
         if (st.src === "custom") h += '<textarea rows="3" maxlength="60" placeholder="写给 TA 的祝福（60字内）">' + SF.esc(st.text) + "</textarea>";
         if (st.src === "pool" && !st.pool.length) h += '<p class="tip">祝福池是空的。去首页的红包摊里，可以让角色一次攒 12 句。</p>';
+        h += "<h4>金额（虚拟压岁钱）</h4>";
+        if (st.dir === "me2ta") h += '<input type="text" class="sfamt" inputmode="decimal" placeholder="如 8.88，留空则随机吉利数字" value="' + SF.esc(st.amount) + '"><div style="margin-top:8px">' + ["6.66", "8.88", "66.6", "88.8", "520", "1314"].map(function (v) { return '<span class="sfchip" data-q="' + v + '">' + v + "</span>"; }).join("") + "</div>";
+        else h += '<p class="tip">TA 发的红包，金额会从吉利数字里随机抽。</p>';
         h += '<div class="sfrow" style="margin-top:16px;justify-content:center"><button class="sfb" data-a="send">发出红包</button></div>';
         L.body.innerHTML = h;
         var ta = L.body.querySelector("textarea"); if (ta) ta.oninput = function () { st.text = ta.value; };
+        var am = L.body.querySelector(".sfamt"); if (am) am.oninput = function () { st.amount = am.value; };
       }
       L.body.addEventListener("click", async function (e) {
-        var a = e.target.closest("[data-d],[data-s],[data-c],[data-a]"); if (!a) return;
+        var a = e.target.closest("[data-d],[data-s],[data-c],[data-a],[data-q]"); if (!a) return;
         if (a.dataset.d) { st.dir = a.dataset.d; st.src = "preset"; await render(); }
         else if (a.dataset.s) { st.src = a.dataset.s; await render(); }
         else if (a.dataset.c) { st.cid = a.dataset.c; if (st.src === "pool") st.src = "preset"; await render(); }
+        else if (a.dataset.q) { st.amount = a.dataset.q; await render(); }
         else if (a.dataset.a === "send") await send(a);
       });
       async function send(btn) {
         if (!st.cid) { SF.toast("先选一位角色"); return; }
         btn.disabled = true;
         try {
+          var amount;
+          if (st.dir === "me2ta" && String(st.amount || "").trim() !== "") {
+            var num = Number(String(st.amount).trim());
+            if (!isFinite(num) || num <= 0 || num > 99999.99) { SF.toast("金额请填 0.01 ~ 99999.99"); btn.disabled = false; return; }
+            amount = Math.round(num * 100) / 100;
+          } else amount = SF.pick(SF.data.amounts);
           var char = (await r.character.get(st.cid)) || {}, name = SF.cname(char), blessing = "";
           if (st.dir === "me2ta") {
             blessing = st.src === "custom" ? clean(st.text) : SF.pick(SF.data.rp);
@@ -114,12 +129,12 @@
             blessing = await aiBless(char);
             if (!blessing) throw new Error("没有收到祝福内容，请重试");
           } else blessing = SF.pick(SF.data.rp);
-          var cd = { dir: st.dir, status: "sealed", blessing: blessing, fromName: name, toName: name, ts: Date.now() };
+          var cd = { dir: st.dir, status: "sealed", blessing: blessing, amount: amount, fromName: name, toName: name, ts: Date.now() };
           await r.chat.createCard({
             conversationId: ctx.conversationId, messageType: "red-packet", isMe: st.dir === "me2ta",
             senderId: st.dir === "ta2me" ? st.cid : undefined, cardData: cd, modelText: mtext(cd)
           });
-          addRecord({ t: Date.now(), dir: st.dir, who: name, blessing: blessing });
+          addRecord({ t: Date.now(), dir: st.dir, who: name, blessing: blessing, amount: amount });
           if (SF.fortune) SF.fortune.award("send");
           L.close();
         } catch (e) { SF.toast("发送失败：" + (e.message || e)); btn.disabled = false; btn.textContent = "发出红包"; }
@@ -137,7 +152,7 @@
           var a = await SF.st.get("rp_records", []);
           h += a.length ? a.map(function (x) {
             var lab = x.dir === "ta2me" ? SF.esc(x.who) + " → 我" : x.dir === "me2ta" ? "我 → " + SF.esc(x.who) : "拆开了 " + SF.esc(x.who) + " 的红包";
-            return '<div class="sfr-i"><div><small>' + fmt(x.t) + "　" + lab + "</small><p>" + SF.esc(x.blessing || "") + "</p></div></div>";
+            return '<div class="sfr-i"><div><small>' + fmt(x.t) + "　" + lab + (x.amount != null ? " · ¥" + fmtAmt(x.amount) : "") + "</small><p>" + SF.esc(x.blessing || "") + "</p></div></div>";
           }).join("") : '<p class="tip">还没有红包记录。在聊天里点「+」号里的「新春红包」就能发。</p>';
         } else {
           h += '<p class="tip">祝福池按角色分开存。让角色一次攒 12 句（AI 1 次），之后发红包时随机抽，每句只用一次。</p><div>' +
@@ -182,7 +197,8 @@
     "@keyframes sfcPulse{50%{transform:scale(1.1);box-shadow:0 0 14px rgba(255,214,120,.9)}}",
     "@keyframes sfcSpin{to{transform:rotateY(360deg)}}@keyframes sfcPop{40%{transform:scale(1.05)}}",
     ".sfc-spark{position:absolute;width:6px;height:6px;border-radius:50%;background:#ffe29a;animation:sfcSpark .9s ease-out forwards}",
-    "@keyframes sfcSpark{to{transform:translate(var(--dx),var(--dy)) scale(.2);opacity:0}}"
+    "@keyframes sfcSpark{to{transform:translate(var(--dx),var(--dy)) scale(.2);opacity:0}}",
+    '.sfc-amt{display:block;margin-top:2px;font:700 20px/1.3 "STKaiti","KaiTi","Songti SC",serif;color:#fff3dc}'
   ].join("\n"));
   SF.cssApp.push([
     ".sfr-i{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 2px;border-bottom:1px solid rgba(255,215,122,.16)}",

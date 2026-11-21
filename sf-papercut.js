@@ -35,12 +35,22 @@
         var small = await shrink(item.img, 360, 0.8);
         await SF.roche.chat.createCard({
           conversationId: c.id || c.conversationId, messageType: "paper-cut", isMe: true,
-          cardData: { img: small, fold: item.fold },
-          modelText: "我剪了一张新春窗花送给你（" + item.fold + "折对称剪纸，红纸镂空的图案）。"
+          cardData: { img: small, fold: item.fold, name: item.name || "" },
+          modelText: "我剪了一张名叫《" + (item.name || "窗花") + "》的新春窗花送给你（" + item.fold + "折对称剪纸，红纸镂空的图案）。"
         });
         SF.toast("已发送"); L.close();
       } catch (err) { SF.toast("发送失败：" + (err.message || err)); a.textContent = SF.esc(c.name || c.title || "聊天"); }
     };
+  }
+
+  function askName(def) {
+    return new Promise(function (res) {
+      var done = false, L = SF.layer(SF.appRoot, "给作品起个名字", { onClose: function () { if (!done) { done = true; res(null); } } });
+      L.body.innerHTML = '<input type="text" maxlength="12" placeholder="最多12个字" value="' + SF.esc(def) + '"><div class="sfrow" style="margin-top:14px;justify-content:center"><button class="sfb">保存</button></div>';
+      var inp = L.body.querySelector("input");
+      setTimeout(function () { inp.focus(); inp.select(); }, 320);
+      L.body.querySelector("button").onclick = function () { var v = inp.value.trim().slice(0, 12) || def; done = true; L.close(); res(v); };
+    });
   }
 
   async function wall() {
@@ -48,13 +58,13 @@
     async function render() {
       var a = await SF.st.get("cuts", []);
       L.body.innerHTML = a.length ? '<div class="sfp-wall">' + a.map(function (x, i) {
-        return '<div class="sfp-th" data-i="' + i + '"><img src="' + x.img + '" draggable="false"></div>';
+        return '<div class="sfp-it" data-i="' + i + '"><div class="sfp-th"><img src="' + x.img + '" draggable="false"></div><small>' + SF.esc(x.name || "窗花") + "</small></div>";
       }).join("") + "</div>" : '<p class="tip">还没有作品。去剪一张吧。</p>';
     }
     L.body.onclick = async function (e) {
       var t = e.target.closest("[data-i]"); if (!t) return;
       var a = await SF.st.get("cuts", []), item = a[+t.dataset.i]; if (!item) return;
-      var V = SF.layer(SF.appRoot, "窗花（" + item.fold + "折）");
+      var V = SF.layer(SF.appRoot, "《" + (item.name || "窗花") + "》· " + item.fold + "折");
       V.body.innerHTML = '<div class="sfp-big"><img src="' + item.img + '"></div><div class="sfrow" style="justify-content:center;margin-top:12px"><button class="sfb sm" data-a="x">导出</button><button class="sfb sm" data-a="s">发给 TA</button><button class="sfb sm ghost" data-a="d">删除</button></div>';
       V.body.onclick = async function (ev) {
         var b = ev.target.closest("[data-a]"); if (!b) return;
@@ -75,14 +85,14 @@
     mountCard: function (c, m, r) {
       SF.setRoche(r);
       var cd = m.cardData || {};
-      var d = SF.h("div", "sfc-pc", '<img draggable="false"><span>新春窗花 · ' + SF.esc(cd.fold || "") + "折</span>");
+      var d = SF.h("div", "sfc-pc", '<img draggable="false"><span>' + SF.esc(cd.name ? "《" + cd.name + "》" : "新春窗花") + " · " + SF.esc(cd.fold || "") + "折</span>");
       d.querySelector("img").src = cd.img || "";
       c.replaceChildren(d);
     },
     // ---------- 剪纸摊 ----------
     open: function () {
       var L = SF.layer(SF.appRoot, "剪纸摊", { full: true });
-      var fold = 4, circle = false, color = 0, tool = "line", wi = 1, hist = [], drawing = false, last = null;
+      var fold = 4, circle = false, color = 0, tool = "line", wi = 1, hist = [], drawing = false, last = null, lastSnd = 0;
       L.body.innerHTML =
         '<div class="sfp-bar" data-g="fold"><span class="sfchip" data-v="2">2折</span><span class="sfchip on" data-v="4">4折</span><span class="sfchip" data-v="8">8折</span></div>' +
         '<div class="sfp-bar" data-g="shape"><span class="sfchip on" data-v="sq">方形</span><span class="sfchip" data-v="ci">圆形</span><span class="sfp-sp"></span>' +
@@ -136,13 +146,14 @@
 
       cv.addEventListener("pointerdown", function (e) {
         e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (x) {}
-        snap(); drawing = true; var p = pos(e);
+        snap(); drawing = true; var p = pos(e); if (SF.sfx) SF.sfx.snip();
         if (tool === "line") { seg(p, p); last = p; } else stamp(p[0], p[1]);
         render(true);
       });
       cv.addEventListener("pointermove", function (e) {
         if (!drawing || tool !== "line") return;
         var p = pos(e); seg(last, p); last = p; render(true);
+        var nw = performance.now(); if (SF.sfx && nw - lastSnd > 110) { lastSnd = nw; SF.sfx.shh(); }
       });
       var up = function () { drawing = false; last = null; };
       cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
@@ -172,10 +183,13 @@
         else if (n.dataset.a === "clear") { snap(); mg.clearRect(0, 0, S, S); render(true); }
         else if (n.dataset.a === "wall") wall();
         else if (n.dataset.a === "save") {
+          var arr0 = await SF.st.get("cuts", []);
+          var nm = await askName("窗花 " + (arr0.length + 1));
+          if (nm == null) return;
           var arr = await SF.st.get("cuts", []);
-          arr.unshift({ id: Date.now(), t: Date.now(), fold: fold, img: snapshot(640) });
+          arr.unshift({ id: Date.now(), t: Date.now(), name: nm, fold: fold, img: snapshot(640) });
           if (arr.length > 40) arr.length = 40;
-          if (await SF.st.set("cuts", arr)) { SF.toast("已保存到作品墙"); if (SF.fortune) SF.fortune.award("cut"); }
+          if (await SF.st.set("cuts", arr)) { SF.toast("已保存到作品墙"); if (SF.sfx) SF.sfx.save(); if (SF.fortune) SF.fortune.award("cut"); }
           else SF.toast("保存失败，存储空间可能不足");
         }
       });
@@ -190,7 +204,8 @@
     ".sfp-cv{width:min(100%,46vh);aspect-ratio:1;touch-action:none;border-radius:6px;background:#f5e6c8;box-shadow:0 6px 22px rgba(0,0,0,.45)}",
     ".sfp-wall{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}",
     ".sfp-th{aspect-ratio:1;border-radius:6px;overflow:hidden;border:1.5px solid rgba(255,215,122,.4)}.sfp-th img,.sfp-big img{width:100%;height:100%;display:block;object-fit:cover}",
-    ".sfp-big{border-radius:8px;overflow:hidden;border:2px solid #ffd77a}"
+    ".sfp-big{border-radius:8px;overflow:hidden;border:2px solid #ffd77a}",
+    ".sfp-it small{display:block;margin-top:4px;text-align:center;font-size:11.5px;color:#ffe3a1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
   ].join("\n"));
   SF.cssChat.push([
     ".sfc-pc{width:200px;max-width:100%;border-radius:10px;overflow:hidden;border:2px solid #e9bd62;background:#f5e6c8;box-shadow:0 4px 14px rgba(120,10,20,.3)}",

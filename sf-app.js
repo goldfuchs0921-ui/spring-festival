@@ -51,7 +51,7 @@
       root.innerHTML =
         '<div class="sf-view"><div class="sf-scene"><div class="sf-bg"></div></div></div>' +
         '<canvas class="sf-fx"></canvas>' +
-        '<div class="sf-top"><button class="sf-back" type="button" aria-label="返回">‹</button><div class="sf-cd"><small>距新春零点</small><b>--</b></div></div>';
+        '<div class="sf-top"><button class="sf-back" type="button" aria-label="返回">‹</button><div class="sf-cd"><small>距新春零点</small><b>--</b></div><button class="sf-snd" type="button" aria-label="音效"></button></div>';
       container.replaceChildren(root);
       SF.appRoot = root;
       var view = root.querySelector(".sf-view"), scene = root.querySelector(".sf-scene");
@@ -82,13 +82,17 @@
 
       root.addEventListener("pointerdown", function () { SF.audio.unlock(); }, { once: true });
       root.querySelector(".sf-back").onclick = function () { try { roche.ui.closeApp(); } catch (e) {} };
+      var snd = root.querySelector(".sf-snd");
+      function paintSnd() { var on = SF.sfx && SF.sfx.enabled(); snd.textContent = on ? "♪" : "静"; snd.classList.toggle("off", !on); }
+      snd.onclick = function () { SF.sfx.set(!SF.sfx.enabled()); paintSnd(); SF.sfx.tap(); };
+      paintSnd();
 
       scene.addEventListener("click", function (e) {
         var b = e.target.closest(".sf-spot");
         if (b) {
           var s = byId[b.dataset.id];
           if (s.locked) { SF.toast(s.label + "：即将开放"); return; }
-          SF.audio.unlock();
+          SF.audio.unlock(); if (SF.sfx) SF.sfx.tap();
           try { s.act(); } catch (err) { console.error(err); SF.toast("出错了：" + (err.message || err)); }
           return;
         }
@@ -135,7 +139,8 @@
     "@media (prefers-reduced-motion:reduce){.sf-glow,.sf-tag{animation:none}}",
     ".sf-fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}",
     ".sf-top{position:absolute;left:0;right:0;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;padding:calc(10px + env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 0 max(14px,env(safe-area-inset-left));pointer-events:none}",
-    ".sf-top::after{content:'';width:38px}",
+    ".sf-snd{pointer-events:auto;width:38px;height:38px;padding:0;border-radius:50%;border:1px solid rgba(255,215,122,.55);background:rgba(36,10,20,.55);color:#ffd77a;font-size:16px;line-height:1;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}",
+    ".sf-snd.off{opacity:.55;font-size:13px}",
     ".sf-back{pointer-events:auto;width:38px;height:38px;padding:0 0 3px;border-radius:50%;border:1px solid rgba(255,215,122,.55);background:rgba(36,10,20,.55);color:#ffd77a;font-size:24px;line-height:1;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}",
     ".sf-cd{padding:5px 16px 6px;border-radius:14px;text-align:center;background:rgba(36,10,20,.5);border:1px solid rgba(255,215,122,.35);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}",
     ".sf-cd small{display:block;font-size:10.5px;color:rgba(255,243,220,.7)}",

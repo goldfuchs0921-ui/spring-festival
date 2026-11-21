@@ -114,6 +114,7 @@
     el: null, unlocked: false,
     get: function () { if (!this.el) this.el = new Audio(); return this.el; },
     unlock: function () {
+      if (SF.sfx) SF.sfx.unlock();
       if (this.unlocked) return; this.unlocked = true;
       try {
         var a = this.get();

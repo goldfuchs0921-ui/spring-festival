@@ -32,6 +32,7 @@
   function popup(t) {
     var root = SF.appRoot;
     if (!root || !document.body.contains(root)) { SF.toast("获得福卡「" + t.ch + "」"); return; }
+    if (SF.sfx) SF.sfx.flip();
     var o = SF.h("div", "sff-pop", '<div class="sff-card"><b>' + t.ch + "</b></div><p>获得福卡「" + t.ch + "」</p>");
     root.appendChild(o);
     o.onclick = function () { o.remove(); };
