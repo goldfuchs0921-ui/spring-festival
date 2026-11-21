@@ -62,7 +62,7 @@
   SF.watch = {
     midnight: midnight,
     open: async function () {
-      var L = SF.layer(SF.appRoot, "守岁", { half: true, onClose: function () { clearInterval(tk); } });
+      var L = SF.layer(SF.appRoot, "守岁", { half: true, k: "VIGIL", onClose: function () { clearInterval(tk); } });
       var chars = await SF.chars(), cfg = await cfgGet(), voices = {}, tk = 0;
       L.body.innerHTML = '<div class="sfw-cd"><small>距新春零点</small><b>--</b></div>' +
         '<div class="sfrow"><input type="text" maxlength="16" placeholder="写一句愿望，变成烟花（16字内）"><button class="sfb sm" data-a="wish">放烟花</button></div>' +
@@ -122,9 +122,9 @@
   };
 
   SF.cssApp.push([
-    ".sfw-cd{text-align:center;margin:2px 0 12px}.sfw-cd small{display:block;font-size:11.5px;color:rgba(255,243,220,.65)}",
-    '.sfw-cd b{font:700 26px/1.3 "STKaiti","KaiTi","Songti SC",serif;color:#ffd77a;letter-spacing:.08em;font-variant-numeric:tabular-nums}',
-    ".sfw-r{display:flex;align-items:center;gap:8px;margin-bottom:6px}.sfw-r .sfchip{margin:0}.sfw-r small{flex:1;font-size:11.5px;color:rgba(255,243,220,.6)}",
+    ".sfw-cd{text-align:center;margin:2px 0 14px}.sfw-cd small{display:block;font-size:9px;letter-spacing:5px;color:var(--k)}",
+    '.sfw-cd b{display:block;margin-top:4px;font:200 38px/1.15 -apple-system,\"PingFang SC\",sans-serif;color:var(--big);letter-spacing:.04em;font-variant-numeric:tabular-nums;text-shadow:0 0 24px rgba(255,180,140,.3)}',
+    ".sfw-r{display:flex;align-items:center;gap:8px;margin-bottom:6px}.sfw-r .sfchip{margin:0}.sfw-r small{flex:1;font-size:11.5px;color:var(--k)}",
     ".sfw-sub{position:absolute;left:5%;right:5%;bottom:calc(12% + env(safe-area-inset-bottom));z-index:60;padding:14px 16px;border-radius:14px;text-align:center;background:rgba(36,10,20,.82);border:1px solid rgba(255,215,122,.5);color:#fff3dc}",
     ".sfw-sub small{display:block;margin-bottom:4px;font-size:12px;color:#ffd77a}.sfw-sub p{margin:0;font-size:15px;line-height:1.7}.sfw-sub p.zh{margin-top:6px;font-size:12.5px;color:rgba(255,243,220,.75)}.sfw-sub .sfb{margin-top:10px}"
   ].join("\n"));

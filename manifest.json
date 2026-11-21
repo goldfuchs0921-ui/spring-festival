@@ -1,7 +1,7 @@
 {
   "id": "spring-festival",
   "name": "新春年味",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "春节主题小镇：守岁烟花、新春红包、剪纸窗花、集五福。",
   "author": "GoldFuchs & Claude",
   "entry": "https://raw.githubusercontent.com/goldfuchs0921-ui/spring-festival/main/plugin.js",

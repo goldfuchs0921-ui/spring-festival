@@ -5,7 +5,7 @@
 
   SF.test = {
     open: function () {
-      var L = SF.layer(SF.appRoot, "测试面板", { full: true });
+      var L = SF.layer(SF.appRoot, "测试面板", { full: true, k: "TEST" });
       L.body.innerHTML =
         '<h4>场景时段预览</h4><div data-g="per">' + PER.map(function (p) { return '<span class="sfchip" data-per="' + p[0] + '">' + p[1] + "</span>"; }).join("") + "</div>" +
         "<h4>时间</h4><p class=\"tip\">把时间拨到零点前 10 秒，回首页等倒计时走完，就能看到真实的零点效果。</p>" +

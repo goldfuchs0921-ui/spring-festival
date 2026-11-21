@@ -50,13 +50,14 @@
   }
 
   async function giftFlow(s) {
-    var L = SF.layer(SF.appRoot, "新年大礼");
+    var L = SF.layer(SF.appRoot, "新年大礼", { k: "BLESSINGS" });
     L.body.innerHTML = '<p class="tip">五福集齐啦。选一种方式领取新年大礼：预设不花额度；让角色亲自写会调用一次 AI。</p><div class="sff-gsrc"></div><div class="sff-gch"></div><div class="sfrow" style="margin-top:12px"><button class="sfb" data-a="go">领取</button></div>';
     var src = "preset", cid = null, chars = await SF.chars();
     var box = L.body.querySelector(".sff-gsrc"), chb = L.body.querySelector(".sff-gch");
     function paint() {
       box.innerHTML = '<span class="sfchip' + (src === "preset" ? " on" : "") + '" data-s="preset">预设（免费）</span><span class="sfchip' + (src === "ai" ? " on" : "") + '" data-s="ai">让角色写（AI 1 次）</span>';
-      chb.innerHTML = src === "ai" ? chars.map(function (c) { return '<span class="sfchip' + (cid === c.id ? " on" : "") + '" data-c="' + SF.esc(c.id) + '">' + SF.esc(SF.cname(c)) + "</span>"; }).join("") || '<p class="tip">没有读取到角色</p>' : "";
+      chb.innerHTML = src === "ai" ? (chars.length ? SF.chipRow(chars.map(function (c) { return '<span class="sfchip' + (cid === c.id ? " on" : "") + '" data-c="' + SF.esc(c.id) + '">' + SF.esc(SF.cname(c)) + "</span>"; }).join("")) : '<p class="tip">没有读取到角色</p>') : "";
+      SF.fadeRows(chb);
     }
     paint();
     L.body.addEventListener("click", async function (e) {
@@ -85,7 +86,7 @@
     });
   }
   function showGift(g) {
-    var L = SF.layer(SF.appRoot, "新年大礼");
+    var L = SF.layer(SF.appRoot, "新年大礼", { k: "BLESSINGS" });
     L.body.innerHTML = '<div class="sff-letter"><p>' + SF.esc(g.text) + '</p><em>—— ' + SF.esc(g.who) + "</em></div>";
   }
 
@@ -93,7 +94,7 @@
     award: function (task, force) { chain = chain.then(function () { return doAward(task, force); }).catch(function (e) { console.error(e); }); return chain; },
     load: load,
     open: async function () {
-      var L = SF.layer(SF.appRoot, "集五福", { full: true, onClose: function () { view = null; } });
+      var L = SF.layer(SF.appRoot, "集五福", { full: true, k: "BLESSINGS", onClose: function () { view = null; } });
       async function render() {
         var s = await load(), got = TYPES.filter(function (t) { return s.cards[t.k] > 0; }).length;
         var done = TASKS.filter(function (t) { return s.done[t.k]; }).length;
@@ -131,9 +132,9 @@
     '.sff-c b{font:700 34px/1 "STKaiti","KaiTi","Songti SC",serif;color:#ffe29a;text-shadow:0 1px 6px rgba(0,0,0,.4)}',
     ".sff-c.off{filter:grayscale(.9) brightness(.5);border-color:rgba(255,215,122,.3)}",
     ".sff-c i{position:absolute;right:-5px;top:-7px;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:9px;background:#ffd77a;color:#7a1010;font:700 11px/18px sans-serif;text-align:center;font-style:normal}",
-    ".sff-t{display:flex;align-items:center;justify-content:space-between;padding:11px 2px;border-bottom:1px solid rgba(255,215,122,.16)}",
-    ".sff-t b{display:block;font-size:14px;color:#fff3dc}.sff-t small{font-size:11.5px;color:rgba(255,243,220,.6)}",
-    ".sff-t>span{font-size:12px;color:rgba(255,215,122,.8)}.sff-t.ok b{color:rgba(255,243,220,.45);text-decoration:line-through}.sff-t.ok>span{color:#8fd19a}",
+    ".sff-t{display:flex;align-items:center;justify-content:space-between;padding:11px 2px;border-bottom:1px solid var(--hair)}",
+    ".sff-t b{display:block;font-size:14px;font-weight:500;color:var(--tx)}.sff-t small{font-size:11.5px;color:var(--k)}",
+    ".sff-t>span{font-size:12px;color:var(--acc)}.sff-t.ok b{opacity:.5;text-decoration:line-through}.sff-t.ok>span{color:#4f9d63}",
     ".sff-pop{position:absolute;inset:0;z-index:80;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,6,20,.5);color:#ffe3a1;font:600 16px/1 serif;letter-spacing:.1em}",
     ".sff-pop .sff-card{width:112px;height:150px;border-radius:12px;background:linear-gradient(160deg,#d4262f,#8f1420);border:2px solid #ffd77a;display:flex;align-items:center;justify-content:center;box-shadow:0 0 40px rgba(255,200,90,.55);animation:sffFlip .6s ease-out}",
     '.sff-pop .sff-card b{font:700 60px/1 "STKaiti","KaiTi","Songti SC",serif;color:#ffe29a}.sff-pop p{margin-top:18px}',
