@@ -3,34 +3,33 @@
   "use strict";
   // 入口位置：box = [左, 上, 右, 下]，单位是场景图的像素（按 1220×2576 的基准量的）；tag = 标签在入口框里的位置
   var SPOTS = [
-    { id: "watch", label: "守岁", en: "VIGIL", box: [340, 760, 580, 990], act: function () { SF.watch.open(); } },
+    { id: "watch", label: "守岁", en: "VIGIL", box: [340, 760, 580, 990], act: function () { return SF.watch.open(); } },
     { id: "stage", label: "春晚", en: "GALA", box: [780, 765, 1200, 1095], tag: [.45, .62], locked: 1 },
     { id: "tree", label: "年度回忆", en: "MEMORIES", box: [15, 980, 455, 1335], tag: [.62, .4], locked: 1 },
     { id: "drum", label: "打年兽", en: "BEAT NIAN", box: [450, 1125, 845, 1315], locked: 1 },
-    { id: "stall", label: "红包", en: "RED PACKET", box: [905, 1235, 1175, 1425], tag: [.15, .5], act: function () { SF.rp.openStall(); } },
+    { id: "stall", label: "红包", en: "RED PACKET", box: [905, 1235, 1175, 1425], tag: [.1, .5], act: function () { return SF.rp.openStall(); } },
     { id: "board", label: "春联", en: "COUPLETS", box: [655, 1360, 915, 1605], tag: [.45, .5], locked: 1 },
-    { id: "cut", label: "剪纸", en: "PAPERCUT", box: [920, 1475, 1220, 1795], tag: [.1, .5], act: function () { SF.pc.open(); } },
+    { id: "cut", label: "剪纸", en: "PAPERCUT", box: [920, 1475, 1220, 1795], tag: [.1, .5], act: function () { return SF.pc.open(); } },
     { id: "lantern", label: "灯谜", en: "RIDDLES", box: [55, 1360, 395, 1585], locked: 1 },
     { id: "home", label: "走亲戚", en: "VISITING", box: [75, 1585, 725, 2055], locked: 1 },
-    { id: "gate", label: "集五福", en: "BLESSINGS", box: [575, 2035, 1090, 2495], tag: [.5, .38], act: function () { SF.fortune.open(); } },
-    { id: "shed", label: "测试", en: "TEST", box: [105, 1915, 325, 2095], tag: [.5, .45], act: function () { SF.test.open(); } }
+    { id: "gate", label: "集五福", en: "BLESSINGS", box: [575, 2035, 1090, 2495], tag: [.5, .38], act: function () { return SF.fortune.open(); } },
+    { id: "shed", label: "测试", en: "TEST", box: [105, 1915, 325, 2095], tag: [.5, .45], act: function () { return SF.test.open(); } }
   ];
   var IMG = { morning: "morning.png", noon: "noon.png", dusk: "dusk.png", night: "night.png" };
   var S = {};
 
   function pct(v, base) { return (v / base * 100).toFixed(3) + "%"; }
 
-  // 红丝带：一部分从字后面穿过，一部分从字前面穿过
+  // 红色手写线：有的线段在字前面，有的在字后面，来回穿过文字
   function silk(u, locked) {
-    var c1 = locked ? "#b78f86" : "#ff4a4a", c2 = locked ? "#a67b72" : "#e22a2a";
-    var defs = '<linearGradient id="' + u + 'g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="' + c1 + '" stop-opacity="0"/><stop offset=".2" stop-color="' + c1 + '"/><stop offset=".8" stop-color="' + c2 + '"/><stop offset="1" stop-color="' + c2 + '" stop-opacity="0"/></linearGradient>' +
-      '<clipPath id="' + u + 'r"><rect x="75" y="0" width="75" height="46"/></clipPath><clipPath id="' + u + 'l"><rect x="0" y="0" width="75" height="46"/></clipPath>';
-    var A = '<path d="M4 34C26 6 50 6 74 24S116 44 146 12" stroke-width="' + (locked ? 1.8 : 2.6) + '"/>';
-    var B = '<path d="M14 42C34 16 58 20 80 32S120 38 142 24" stroke-width="1.6"/>';
-    var C = '<path d="M0 22C24 36 48 34 72 18S120 6 148 20" stroke-width="1.1"/>';
-    var at = ' viewBox="0 0 150 46" preserveAspectRatio="none" fill="none" stroke="url(#' + u + 'g)" stroke-linecap="round" aria-hidden="true"';
-    return '<svg class="sf-silk back"' + at + "><defs>" + defs + "</defs>" + B + C + '<g clip-path="url(#' + u + 'r)">' + A + "</g></svg>" +
-      '<svg class="sf-silk front"' + at + '><g clip-path="url(#' + u + 'l)">' + A + "</g></svg>";
+    var c = locked ? "#b78f86" : "#ff5a5a";
+    var defs = '<linearGradient id="' + u + 'g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="' + c + '" stop-opacity="0"/><stop offset=".14" stop-color="' + c + '"/><stop offset=".86" stop-color="' + c + '"/><stop offset="1" stop-color="' + c + '" stop-opacity="0"/></linearGradient>' +
+      '<clipPath id="' + u + 'f"><rect x="0" y="0" width="45" height="40"/><rect x="90" y="0" width="45" height="40"/></clipPath>' +
+      '<clipPath id="' + u + 'b"><rect x="45" y="0" width="45" height="40"/><rect x="135" y="0" width="25" height="40"/></clipPath>';
+    var P = '<path d="M2 30C16 6 28 4 34 18C38 30 22 34 30 22C40 6 58 4 66 20C72 33 56 36 62 24C72 4 92 6 98 22C104 34 88 36 94 24C104 6 126 8 132 22C138 32 126 34 130 26C138 14 150 14 158 20" stroke-width="' + (locked ? 1 : 1.3) + '"/>';
+    var at = ' viewBox="0 0 160 40" preserveAspectRatio="none" fill="none" stroke="url(#' + u + 'g)" stroke-linecap="round" aria-hidden="true"';
+    return '<svg class="sf-silk back"' + at + "><defs>" + defs + '</defs><g clip-path="url(#' + u + 'b)">' + P + "</g></svg>" +
+      '<svg class="sf-silk front"' + at + '><g clip-path="url(#' + u + 'f)">' + P + "</g></svg>";
   }
   function tagHtml(s) {
     var u = "sfs" + s.id;
@@ -107,11 +106,16 @@
           var s = byId[b.dataset.id], rr = b.getBoundingClientRect(), vr = view.getBoundingClientRect();
           var rip = SF.h("i", "sf-rip"); b.appendChild(rip); setTimeout(function () { rip.remove(); }, 800);
           if (s.locked) { SF.toast(s.label + "：即将开放"); return; }
+          if (root._sfl > 0 || S.lock) return; // 已经有页面打开，或刚点过：忽略
+          if (S.half && S.half.alive) { S.half.close(); S.half = null; if (s.id === S.halfId) { S.halfId = null; return; } }
+          S.lock = true; setTimeout(function () { S.lock = false; }, 500);
           // 进入功能页：首页朝被点的建筑“走近”并变暗
           root.style.setProperty("--ox", (rr.left + rr.width / 2 - vr.left) + "px");
           root.style.setProperty("--oy", (rr.top + rr.height / 2 - vr.top) + "px");
           SF.audio.unlock(); if (SF.sfx) SF.sfx.tap();
-          try { s.act(); } catch (err) { console.error(err); SF.toast("出错了：" + (err.message || err)); }
+          try {
+            Promise.resolve(s.act()).then(function (l) { if (l && l.half) { S.half = l; S.halfId = s.id; } }, function (err) { console.error(err); });
+          } catch (err) { console.error(err); SF.toast("出错了：" + (err.message || err)); }
           return;
         }
         var r = scene.getBoundingClientRect();
@@ -151,28 +155,28 @@
 .sf-spot.lock .sf-glow{background:radial-gradient(closest-side,rgba(150,160,220,.14),rgba(150,160,220,0) 72%)}
 .sf-rip{position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;border:2px solid rgba(255,235,190,.9);pointer-events:none;animation:sfRip .8s ease-out forwards}
 @keyframes sfRip{to{transform:scale(9);opacity:0}}
-.sf-tag{position:absolute;transform:translate(-50%,-50%);font-size:22px;transition:transform .2s}
+.sf-tag{position:absolute;transform:translate(-50%,-50%);font-size:15px;transition:transform .2s}
 .sf-spot:active .sf-tag{transform:translate(-50%,-50%) scale(.93)}
 .sf-tagi{position:relative;display:flex;flex-direction:column;align-items:center;animation:sfFloat 4.2s ease-in-out infinite;animation-delay:calc(var(--d,0) * -1s)}
-.sf-tagi::before{content:"";position:absolute;inset:-.7em -1.4em;background:radial-gradient(closest-side,rgba(18,8,22,.5),rgba(18,8,22,0));pointer-events:none;z-index:-1}
-.sf-en{position:absolute;left:50%;top:50%;transform:translate(-50%,-60%);z-index:0;white-space:nowrap;pointer-events:none;font:italic 900 1.25em/1 "Arial Black","Impact","Helvetica Neue",Arial,sans-serif;letter-spacing:-.02em;color:rgba(255,255,255,.22)}
-.sf-cn{position:relative;z-index:2;white-space:nowrap;font:500 1em/1 "PingFang SC","Noto Sans SC","Hiragino Sans GB",sans-serif;letter-spacing:.32em;margin-right:-.32em;color:#fbf7ee;text-shadow:0 0 .5em rgba(20,8,12,.75),0 1px 2px rgba(0,0,0,.55)}
-.sf-cap{position:relative;z-index:1;display:block;width:calc(100% + 1.1em);height:.42em;margin-top:.22em;border-radius:999px;background:linear-gradient(180deg,#fffaf0,#efe3cd);box-shadow:0 0 .7em rgba(255,240,210,.65);animation:sfCap 3s ease-in-out infinite}
-.sf-silk{position:absolute;left:50%;top:50%;width:calc(100% + 3.2em);height:2em;transform:translate(-50%,-72%);pointer-events:none;overflow:visible;animation:sfWob 6s ease-in-out infinite alternate}
+.sf-tagi::before{content:"";position:absolute;inset:-1.1em -2em;background:radial-gradient(closest-side,rgba(18,8,22,.66),rgba(18,8,22,0));pointer-events:none;z-index:-1}
+.sf-en{position:absolute;left:50%;top:50%;transform:translate(-50%,-56%);z-index:0;white-space:nowrap;pointer-events:none;font:italic 700 1.7em/1 Georgia,"Times New Roman","Songti SC",serif;letter-spacing:.01em;color:rgba(255,255,255,.4);text-shadow:0 0 .5em rgba(20,8,12,.4)}
+.sf-cn{position:relative;z-index:2;white-space:nowrap;font:600 1em/1 "Songti SC","STSong","Noto Serif SC","Source Han Serif SC",serif;letter-spacing:.2em;margin-right:-.2em;color:#fff;text-shadow:0 0 .55em rgba(255,60,70,.9),0 0 .12em rgba(255,90,90,.7),0 1px 3px rgba(0,0,0,.6)}
+.sf-cap{position:relative;z-index:1;display:block;width:calc(100% + .9em);height:.3em;margin-top:.22em;border-radius:999px;background:#fff;box-shadow:0 0 .7em rgba(255,255,255,.75);animation:sfCap 3s ease-in-out infinite}
+.sf-silk{position:absolute;left:50%;top:50%;width:calc(100% + 2.6em);height:1.9em;transform:translate(-50%,-66%);pointer-events:none;overflow:visible;animation:sfWob 6s ease-in-out infinite alternate}
 .sf-silk.back{z-index:1}.sf-silk.front{z-index:3;animation-delay:-1.2s}
 .sf-star{position:absolute;z-index:3;width:.55em;height:.55em;background:#fff;clip-path:polygon(50% 0,60% 40%,100% 50%,60% 60%,50% 100%,40% 60%,0 50%,40% 40%);filter:drop-shadow(0 0 4px #fff);animation:sfTw 2.4s ease-in-out infinite}
 .sf-star.s1{right:-1em;bottom:-.2em}.sf-star.s2{width:.36em;height:.36em;right:-1.6em;bottom:.12em;animation-delay:-1.1s}
 .sf-dot{position:absolute;z-index:3;width:.2em;height:.2em;border-radius:50%;background:#f4efe6;opacity:.85}
 .sf-dot.d1{left:62%;top:-.35em}.sf-dot.d2{left:-.5em;top:55%;width:.14em;height:.14em}.sf-dot.d3{right:-.4em;top:-.1em;width:.12em;height:.12em}
-.sf-soon{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:.45em;white-space:nowrap;font:400 .5em/1 -apple-system,"PingFang SC",sans-serif;letter-spacing:.7em;margin-right:-.7em;color:rgba(255,255,255,.78);text-shadow:0 0 .6em rgba(20,8,12,.8)}
+.sf-soon{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:.5em;white-space:nowrap;font:400 .62em/1 -apple-system,"PingFang SC",sans-serif;letter-spacing:.6em;margin-right:-.6em;color:rgba(255,255,255,.78);text-shadow:0 0 .6em rgba(20,8,12,.8)}
 .sf-spot.lock .sf-cn{color:rgba(240,232,224,.82)}
-.sf-spot.lock .sf-en{color:rgba(255,255,255,.14)}
+.sf-spot.lock .sf-en{color:rgba(255,255,255,.26)}
 .sf-spot.lock .sf-cap{background:linear-gradient(180deg,#d6cdc8,#b8aca6);box-shadow:none;opacity:.8;animation:none}
 .sf-spot.lock .sf-star{opacity:.5;animation:none}
 @keyframes sfGlow{0%,100%{opacity:.3}50%{opacity:1}}
 @keyframes sfFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 @keyframes sfCap{50%{box-shadow:0 0 1.1em rgba(255,240,210,.95)}}
-@keyframes sfWob{from{transform:translate(-50%,-72%) rotate(-1.2deg) translateX(-3px)}to{transform:translate(-50%,-72%) rotate(1.2deg) translateX(3px)}}
+@keyframes sfWob{from{transform:translate(-50%,-66%) rotate(-1.2deg) translateX(-3px)}to{transform:translate(-50%,-66%) rotate(1.2deg) translateX(3px)}}
 @keyframes sfTw{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.6);opacity:.5}}
 @media (prefers-reduced-motion:reduce){.sf-glow,.sf-tagi,.sf-cap,.sf-silk,.sf-star{animation:none}.sf-view{transition:none}}
 .sf-fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}

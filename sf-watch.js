@@ -63,37 +63,42 @@
     midnight: midnight,
     open: async function () {
       var L = SF.layer(SF.appRoot, "守岁", { half: true, k: "VIGIL", onClose: function () { clearInterval(tk); } });
-      var chars = await SF.chars(), cfg = await cfgGet(), voices = {}, tk = 0;
-      L.body.innerHTML = '<div class="sfw-cd"><small>距新春零点</small><b>--</b></div>' +
-        '<div class="sfrow"><input type="text" maxlength="16" placeholder="写一句愿望，变成烟花（16字内）"><button class="sfb sm" data-a="wish">放烟花</button></div>' +
-        "<h4>零点祝福</h4>" +
-        '<p class="tip">零点到来时，选中的角色会依次开口。语音提前合成并保存在本机，零点和预演都直接播放，不再花钱。</p>' +
-        '<div class="sfw-src"></div><div class="sfw-list"></div>' +
-        '<div class="sfrow" style="margin-top:10px;flex-wrap:wrap"><button class="sfb sm" data-a="make">合成选中角色的语音</button><button class="sfb sm ghost" data-a="rehearse">预演零点</button></div>';
-      var cdEl = L.body.querySelector(".sfw-cd b"), input = L.body.querySelector("input");
+      var chars = await SF.chars(), cfg = await cfgGet(), voices = {}, okv = {}, tk = 0;
+      var focus = cfg.sel[0] || (chars[0] && chars[0].id) || null;
+      L.body.innerHTML =
+        '<div class="sfw-hero"><div class="sfw-num"><b>--</b><span></span></div><small>距新春零点</small></div>' +
+        '<div class="sfw-wish"><input type="text" maxlength="16" placeholder="写一句愿望，变成烟花（16字内）"><button class="sfb" data-a="wish" type="button">放烟花</button></div>' +
+        '<h4>零点祝福</h4><div class="sf-card sfw-zero"><div class="sf-seg sfw-src"></div><div class="sfw-chars"></div><div class="sfw-focus"></div></div>' +
+        '<div class="sfw-acts"><button class="sfb" data-a="make" type="button">合成语音</button><button class="sfb ghost" data-a="rehearse" type="button">预演零点</button></div>';
+      var numB = L.body.querySelector(".sfw-num b"), numS = L.body.querySelector(".sfw-num span"), input = L.body.querySelector("input");
       function tick() {
         var left = SF.TARGET - SF.now();
-        cdEl.textContent = left > 0 ? SF.fmtLeft(left) : "新春快乐";
+        if (left > 0) {
+          var t = SF.fmtLeft(left).split(" ");
+          numB.textContent = t[0].replace("天", ""); numS.textContent = "天 " + t[1];
+        } else { numB.textContent = "新春快乐"; numS.textContent = ""; }
       }
       tick(); tk = setInterval(tick, 1000);
 
       async function render() {
-        for (var i = 0; i < chars.length; i++) voices[chars[i].id] = await SF.st.get("zv_" + chars[i].id, null);
-        var okv = {}; for (var k = 0; k < chars.length; k++) okv[chars[k].id] = await SF.hasVoice(chars[k]);
-        L.body.querySelector(".sfw-src").innerHTML = '<span class="sfchip' + (cfg.mode === "preset" ? " on" : "") + '" data-m="preset">预设祝福（免费）</span><span class="sfchip' + (cfg.mode === "ai" ? " on" : "") + '" data-m="ai">角色自己写（每人 AI 1 次）</span>';
-        L.body.querySelector(".sfw-list").innerHTML = chars.map(function (c) {
-          var v = voices[c.id], on = cfg.sel.indexOf(c.id) >= 0;
-          var st = !okv[c.id] ? "缺 Voice ID" : v ? (v.volatile ? "已合成（未能永久保存）" : "已合成") : "未合成";
-          return '<div class="sfw-r"><span class="sfchip' + (on ? " on" : "") + '" data-s="' + SF.esc(c.id) + '">' + SF.esc(SF.cname(c)) + "</span><small>" + st + "</small>" +
-            (v ? '<button class="sfb sm ghost" data-p="' + SF.esc(c.id) + '">试听</button><button class="sfb sm ghost" data-x="' + SF.esc(c.id) + '">清除</button>' : "") + "</div>";
-        }).join("") || '<p class="tip">没有读取到角色</p>';
+        for (var i = 0; i < chars.length; i++) { voices[chars[i].id] = await SF.st.get("zv_" + chars[i].id, null); okv[chars[i].id] = await SF.hasVoice(chars[i]); }
+        L.body.querySelector(".sfw-src").innerHTML = '<span data-m="preset" class="' + (cfg.mode === "preset" ? "on" : "") + '">预设祝福</span><span data-m="ai" class="' + (cfg.mode === "ai" ? "on" : "") + '">角色自己写</span>';
+        L.body.querySelector(".sfw-chars").innerHTML = chars.length ? SF.chipRow(chars.map(function (c) {
+          return '<span class="sfchip' + (cfg.sel.indexOf(c.id) >= 0 ? " on" : "") + (okv[c.id] ? "" : " dim") + '" data-s="' + SF.esc(c.id) + '">' + SF.esc(SF.cname(c)) + "</span>";
+        }).join("")) : '<p class="tip">没有读取到角色</p>';
+        SF.fadeRows(L.body);
+        var f = chars.filter(function (c) { return c.id === focus; })[0], v = f && voices[f.id];
+        var st = !f ? "" : !okv[f.id] ? "缺 Voice ID" : v ? (v.volatile ? "已合成（未能永久保存）" : "已合成") : "未合成";
+        L.body.querySelector(".sfw-focus").innerHTML = f ? "<span><b>" + SF.esc(SF.cname(f)) + "</b>　" + st + "</span><span>" +
+          (v ? '<span class="sf-lnk" data-p="' + SF.esc(f.id) + '">试听</span>　<span class="sf-lnk" data-x="' + SF.esc(f.id) + '">清除</span>' : "") + "</span>" : "<span>点上方角色名选择</span>";
       }
       L.body.addEventListener("click", async function (e) {
         var a = e.target.closest("[data-a],[data-m],[data-s],[data-p],[data-x]"); if (!a) return;
         SF.audio.unlock();
         if (a.dataset.m) { cfg.mode = a.dataset.m; await SF.st.set("zero_cfg", cfg); render(); }
         else if (a.dataset.s) {
-          var i = cfg.sel.indexOf(a.dataset.s); if (i >= 0) cfg.sel.splice(i, 1); else cfg.sel.push(a.dataset.s);
+          focus = a.dataset.s;
+          var i = cfg.sel.indexOf(focus); if (i >= 0) cfg.sel.splice(i, 1); else cfg.sel.push(focus);
           await SF.st.set("zero_cfg", cfg); render();
         }
         else if (a.dataset.p) { var v = voices[a.dataset.p]; if (v) { showSub(v, false); await SF.audio.play(v.audio); hideSub(); } }
@@ -114,18 +119,28 @@
             try { await prepare(picks[j], cfg.mode); }
             catch (err) { SF.toast(SF.cname(picks[j]) + "：" + (err.message || err)); }
           }
-          a.disabled = false; a.textContent = "合成选中角色的语音"; SF.toast("合成完成"); render();
+          a.disabled = false; a.textContent = "合成语音"; SF.toast("合成完成"); render();
         }
       });
-      render();
+      await render();
+      return L;
     }
   };
 
-  SF.cssApp.push([
-    ".sfw-cd{text-align:center;margin:2px 0 14px}.sfw-cd small{display:block;font-size:9px;letter-spacing:5px;color:var(--k)}",
-    '.sfw-cd b{display:block;margin-top:4px;font:200 38px/1.15 -apple-system,\"PingFang SC\",sans-serif;color:var(--big);letter-spacing:.04em;font-variant-numeric:tabular-nums;text-shadow:0 0 24px rgba(255,180,140,.3)}',
-    ".sfw-r{display:flex;align-items:center;gap:8px;margin-bottom:6px}.sfw-r .sfchip{margin:0}.sfw-r small{flex:1;font-size:11.5px;color:var(--k)}",
-    ".sfw-sub{position:absolute;left:5%;right:5%;bottom:calc(12% + env(safe-area-inset-bottom));z-index:60;padding:14px 16px;border-radius:14px;text-align:center;background:rgba(36,10,20,.82);border:1px solid rgba(255,215,122,.5);color:#fff3dc}",
-    ".sfw-sub small{display:block;margin-bottom:4px;font-size:12px;color:#ffd77a}.sfw-sub p{margin:0;font-size:15px;line-height:1.7}.sfw-sub p.zh{margin-top:6px;font-size:12.5px;color:rgba(255,243,220,.75)}.sfw-sub .sfb{margin-top:10px}"
-  ].join("\n"));
+  SF.cssApp.push(`
+.sfw-hero{margin:0 0 16px}
+.sfw-num{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
+.sfw-num b{font:200 54px/1 -apple-system,"PingFang SC",sans-serif;color:var(--big);font-variant-numeric:tabular-nums;text-shadow:0 0 24px rgba(255,180,140,.3)}
+.sfw-num span{font:300 17px/1 -apple-system,"PingFang SC",sans-serif;color:var(--acc);font-variant-numeric:tabular-nums}
+.sfw-hero small{display:block;margin-top:10px;font-size:10px;letter-spacing:6px;color:var(--k)}
+.sfw-wish{display:flex;gap:10px;align-items:stretch}
+.sfw-wish input{flex:1 1 auto;min-width:0}
+.sfw-wish .sfb{flex:0 0 auto;white-space:nowrap;padding:0 22px}
+.sfw-zero{display:flex;flex-direction:column;gap:12px}
+.sfw-focus{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:24px;font-size:12px;color:var(--k)}
+.sfw-focus b{font-weight:500;color:var(--tx)}
+.sfw-acts{display:flex;gap:10px;margin-top:16px}.sfw-acts .sfb{flex:1;white-space:nowrap}
+.sfw-sub{position:absolute;left:5%;right:5%;bottom:calc(12% + env(safe-area-inset-bottom));z-index:60;padding:14px 16px;border-radius:14px;text-align:center;background:rgba(36,10,20,.82);border:1px solid rgba(255,215,122,.5);color:#fff3dc}
+.sfw-sub small{display:block;margin-bottom:4px;font-size:12px;color:#ffd77a}.sfw-sub p{margin:0;font-size:15px;line-height:1.7}.sfw-sub p.zh{margin-top:6px;font-size:12.5px;color:rgba(255,243,220,.75)}.sfw-sub .sfb{margin-top:10px}
+`);
 })(window.__SF);

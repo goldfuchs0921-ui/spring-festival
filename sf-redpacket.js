@@ -54,12 +54,44 @@
       ov.appendChild(s); setTimeout(function (x) { return function () { x.remove(); }; }(s), 1500);
     }
   }
+  function cloud(x, y, k, col) {
+    return '<path transform="translate(' + x + " " + y + ") scale(" + k + ')" d="M10 40a12 12 0 0 1 22-6a14 14 0 0 1 26 4a10 10 0 0 1 2 20H16a10 10 0 0 1-6-18z" fill="none" stroke="' + col + '" stroke-width="2"/>';
+  }
+  function fwSvg(W, H) {
+    var B = [[.18, .16, 64], [.85, .12, 48], [.12, .84, 56], [.88, .8, 70]], o = "";
+    B.forEach(function (b) {
+      var cx = b[0] * W, cy = b[1] * H, r = b[2];
+      for (var i = 0; i < 16; i++) {
+        var a = Math.PI * 2 * i / 16, cs = Math.cos(a), sn = Math.sin(a), rr = i % 2 ? 0.8 : 1;
+        o += '<line x1="' + (cx + cs * r * .3).toFixed(1) + '" y1="' + (cy + sn * r * .3).toFixed(1) + '" x2="' + (cx + cs * r * rr).toFixed(1) + '" y2="' + (cy + sn * r * rr).toFixed(1) + '"/>' +
+          '<circle cx="' + (cx + cs * r * 1.08).toFixed(1) + '" cy="' + (cy + sn * r * 1.08).toFixed(1) + '" r="1.3"/>';
+      }
+    });
+    return '<svg class="sfx-fw" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + " " + H + '" aria-hidden="true">' + o + "</svg>";
+  }
+  function envHtml(cd, title, amt) {
+    var cl = "rgba(255,255,255,.13)";
+    return fwSvg(window.innerWidth, window.innerHeight) +
+      '<div class="sfx-env">' +
+      '<div class="sfx-paper"><small>新春红包</small>' + (amt ? '<b class="sfx-amt">¥ <span>0.00</span></b>' : "") + "<p>" + SF.esc(cd.blessing || "") + "</p></div>" +
+      '<svg class="sfx-face" viewBox="0 0 300 450" preserveAspectRatio="none"><defs><linearGradient id="sfxf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#df5440"/><stop offset="1" stop-color="#bd3a2d"/></linearGradient></defs>' +
+      '<path d="M0 128C62 142 108 168 150 168C192 168 238 142 300 128V450H0Z" fill="url(#sfxf)"/>' + cloud(26, 236, 1.2, cl) + cloud(190, 300, 1.5, cl) + cloud(60, 384, 1, cl) + cloud(214, 214, .9, cl) + "</svg>" +
+      '<div class="sfx-from">' + SF.esc(title) + "</div>" +
+      '<div class="sfx-tassel"><i></i><b></b><u></u></div>' +
+      '<div class="sfx-flap"><svg viewBox="0 0 300 450" preserveAspectRatio="none"><defs><linearGradient id="sfxg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f27058"/><stop offset="1" stop-color="#dd4e3b"/></linearGradient></defs>' +
+      '<path d="M0 0H300V128C238 142 192 168 150 168C108 168 62 142 0 128Z" fill="url(#sfxg)"/>' +
+      '<path d="M10 119C66 133 110 158 150 158C190 158 234 133 290 119" fill="none" stroke="#ffe3b0" stroke-opacity=".85" stroke-width="1.4" stroke-dasharray="2 5" stroke-linecap="round"/>' +
+      cloud(18, 36, 1, cl) + cloud(196, 66, 1.2, cl) + cloud(108, 14, .8, cl) + '</svg><span class="sfx-ttl">开启好运</span></div>' +
+      '<button class="sfx-open" type="button"><svg viewBox="0 0 100 100"><defs><radialGradient id="sfxs" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff3c4"/><stop offset="1" stop-color="#e3aa3c"/></radialGradient></defs>' +
+      '<g fill="url(#sfxs)"><circle cx="50" cy="24" r="22"/><circle cx="76" cy="50" r="22"/><circle cx="50" cy="76" r="22"/><circle cx="24" cy="50" r="22"/><circle cx="50" cy="50" r="30"/></g></svg><span>開</span></button>' +
+      "</div>";
+  }
   // 全屏拆红包：从聊天卡片位置放大到屏幕中央，点「開」拆开，点任意处收回卡片位置
   function showEnvelope(cd, title, rect, commit) {
     return new Promise(function (resolve) {
       var amt = cd.amount != null ? fmtAmt(cd.amount) : "", opened = false, closing = false;
       var ov = SF.h("div", "sfx");
-      ov.innerHTML = '<div class="sfx-bg"></div><div class="sfx-env"><div class="sfx-paper"><small>新春红包</small>' + (amt ? '<b class="sfx-amt">¥ <span>0.00</span></b>' : "") + "<p>" + SF.esc(cd.blessing || "") + '</p></div><div class="sfx-body"><span>' + SF.esc(title) + '</span></div><div class="sfx-flap"></div><button class="sfx-open" type="button">開</button></div><div class="sfx-hint">点击任意处收下</div>';
+      ov.innerHTML = '<div class="sfx-bg"></div>' + envHtml(cd, title, amt) + '<div class="sfx-hint">点击任意处收下</div>';
       document.body.appendChild(ov);
       var env = ov.querySelector(".sfx-env"), bg = ov.querySelector(".sfx-bg"), hint = ov.querySelector(".sfx-hint");
       requestAnimationFrame(function () { bg.style.opacity = 1; });
@@ -93,12 +125,13 @@
     // ---------- 聊天里的红包卡片 ----------
     mountCard: function (c, m, r) {
       SF.setRoche(r);
-      var cd = m.cardData || {}, sealed = cd.dir === "ta2me" && cd.status !== "opened";
+      var cd = m.cardData || {}, sealed = cd.dir === "ta2me" && cd.status !== "opened", mine = cd.dir !== "ta2me";
       var card = SF.h("div", "sfc-rp " + (sealed ? "sealed" : "done"));
-      var who = cd.dir === "ta2me" ? SF.esc(cd.fromName || "TA") + " 送给你" : "你送给 " + SF.esc(cd.toName || "TA");
-      var amtHtml = !sealed && cd.amount != null ? '<b class="sfc-amt">¥ ' + fmtAmt(cd.amount) + "</b>" : "";
-      card.innerHTML = '<div class="sfc-rp-top"><span class="sfc-coin">福</span><div class="sfc-rp-t"><strong>新春红包</strong>' + amtHtml + "<em>" +
-        (sealed ? "点一下，拆开看看" : SF.esc(cd.blessing || "")) + '</em></div></div><div class="sfc-rp-bot">' + who + "</div>";
+      var fromName = mine ? "你" : (cd.fromName || "TA");
+      var who = mine ? "你送给 " + (cd.toName || "TA") : (cd.fromName || "TA") + " 送给你";
+      var title = sealed ? "恭喜发财，大吉大利" : (cd.blessing || "");
+      var status = sealed ? "点击领取" : (mine ? "已送出" : "已领取") + (cd.amount != null ? " · ¥" + fmtAmt(cd.amount) : "");
+      card.innerHTML = '<div class="sfc-rp-in"><span class="sfc-env"></span><div class="sfc-rp-t"><strong>' + SF.esc(title) + "</strong><em>" + SF.esc(status) + '</em></div></div><div class="sfc-rp-bot">' + SF.esc(fromName) + " 发出的红包</div>" + (sealed ? '<i class="sfc-rp-dot"></i>' : "");
       c.replaceChildren(card);
       async function commit() {
         var nd = Object.assign({}, cd, { status: "opened", openedAt: Date.now() });
@@ -114,7 +147,7 @@
       var busy = false;
       card.onclick = function () {
         if (busy) return; busy = true;
-        showEnvelope(cd, who.replace(/<[^>]+>/g, ""), card.getBoundingClientRect(), sealed ? commit : null).then(function () { busy = false; });
+        showEnvelope(cd, who, card.getBoundingClientRect(), sealed ? commit : null).then(function () { busy = false; });
       };
     },
 
@@ -131,21 +164,23 @@
 
       async function render() {
         st.pool = st.cid ? await getPool(st.cid) : [];
-        var h = '<p class="tip">选择谁发、金额和祝福从哪来。</p><div><span class="sfchip' + (st.dir === "ta2me" ? " on" : "") + '" data-d="ta2me">TA 发给我</span><span class="sfchip' + (st.dir === "me2ta" ? " on" : "") + '" data-d="me2ta">我发给 TA</span></div>';
+        var h = '<div class="sf-seg"><span data-d="ta2me" class="' + (st.dir === "ta2me" ? "on" : "") + '">TA 发给我</span><span data-d="me2ta" class="' + (st.dir === "me2ta" ? "on" : "") + '">我发给 TA</span></div>';
         if (isGroup) {
           h += "<h4>" + (st.dir === "ta2me" ? "谁来发" : "发给谁") + "</h4>" + SF.chipRow(members.map(function (x) {
             return '<span class="sfchip' + (st.cid === x.id ? " on" : "") + '" data-c="' + SF.esc(x.id) + '">' + SF.esc(x.handle || x.name || x.displayName) + "</span>";
           }).join(""));
         }
-        h += "<h4>祝福从哪来</h4><div>";
-        var opts = st.dir === "ta2me" ? [["preset", "预设（免费）"], ["pool", "祝福池（" + st.pool.length + "）"], ["ai", "TA 现写（AI 1 次）"]] : [["preset", "预设（免费）"], ["custom", "我自己写"]];
-        h += opts.map(function (o) { return '<span class="sfchip' + (st.src === o[0] ? " on" : "") + '" data-s="' + o[0] + '">' + o[1] + "</span>"; }).join("") + "</div>";
-        if (st.src === "custom") h += '<textarea rows="3" maxlength="60" placeholder="写给 TA 的祝福（60字内）">' + SF.esc(st.text) + "</textarea>";
-        if (st.src === "pool" && !st.pool.length) h += '<p class="tip">祝福池是空的。去首页的红包摊里，可以让角色一次攒 12 句。</p>';
-        h += "<h4>金额</h4>";
-        if (st.dir === "me2ta") h += '<input type="text" class="sfamt" inputmode="decimal" placeholder="如 8.88，留空则随机吉利数字" value="' + SF.esc(st.amount) + '"><div style="margin-top:8px">' + ["6.66", "8.88", "66.6", "88.8", "520", "1314"].map(function (v) { return '<span class="sfchip" data-q="' + v + '">' + v + "</span>"; }).join("") + "</div>";
-        else h += '<p class="tip">TA 发的红包，金额会从吉利数字里随机抽。</p>';
-        h += '<div class="sfrow" style="margin-top:16px;justify-content:center"><button class="sfb" data-a="send">发出红包</button></div>';
+        var opts = st.dir === "ta2me" ? [["preset", "预设"], ["pool", "祝福池 " + st.pool.length], ["ai", "TA 现写"]] : [["preset", "预设"], ["custom", "我来写"]];
+        h += '<h4>祝福</h4><div class="sf-card"><div class="sf-seg">' + opts.map(function (o) { return '<span data-s="' + o[0] + '" class="' + (st.src === o[0] ? "on" : "") + '">' + o[1] + "</span>"; }).join("") + "</div>";
+        if (st.src === "custom") h += '<textarea rows="3" maxlength="60" style="margin-top:12px" placeholder="写给 TA 的祝福（60字内）">' + SF.esc(st.text) + "</textarea>";
+        if (st.src === "pool" && !st.pool.length) h += '<p class="tip" style="margin:10px 0 0">祝福池是空的，去首页红包摊里让角色攒一些。</p>';
+        if (st.src === "ai") h += '<p class="tip" style="margin:10px 0 0">发出时会调用 1 次 AI。</p>';
+        h += "</div>";
+        if (st.dir === "me2ta") {
+          h += '<h4>金额</h4><div class="sf-card"><input type="text" class="sfamt" inputmode="decimal" placeholder="如 8.88，留空则随机吉利数字" value="' + SF.esc(st.amount) + '">' +
+            SF.chipRow(["6.66", "8.88", "66.6", "88.8", "520", "1314"].map(function (v) { return '<span class="sfchip' + (st.amount === v ? " on" : "") + '" data-q="' + v + '">' + v + "</span>"; }).join("")) + "</div>";
+        } else h += '<p class="tip" style="margin-top:14px">TA 发的红包，金额会从吉利数字里随机抽。</p>';
+        h += '<button class="sfb block" data-a="send" type="button" style="margin-top:18px">发出红包</button>';
         L.body.innerHTML = h; SF.fadeRows(L.body);
         var ta = L.body.querySelector("textarea"); if (ta) ta.oninput = function () { st.text = ta.value; };
         var am = L.body.querySelector(".sfamt"); if (am) am.oninput = function () { st.amount = am.value; };
@@ -200,20 +235,19 @@
       var L = SF.layer(SF.appRoot, "红包摊", { full: true, k: "RED PACKET" });
       var tab = "rec", chars = await SF.chars(), cid = chars[0] ? chars[0].id : null;
       async function render() {
-        var h = '<div><span class="sfchip' + (tab === "rec" ? " on" : "") + '" data-t="rec">红包记录</span><span class="sfchip' + (tab === "pool" ? " on" : "") + '" data-t="pool">祝福池</span></div>';
+        var h = '<div class="sf-seg"><span data-t="rec" class="' + (tab === "rec" ? "on" : "") + '">红包记录</span><span data-t="pool" class="' + (tab === "pool" ? "on" : "") + '">祝福池</span></div>';
         if (tab === "rec") {
           var a = await SF.st.get("rp_records", []);
-          h += a.length ? a.map(function (x) {
+          h += "<h4>最近</h4>" + (a.length ? '<div class="sf-card">' + a.map(function (x) {
             var lab = x.dir === "ta2me" ? SF.esc(x.who) + " → 我" : x.dir === "me2ta" ? "我 → " + SF.esc(x.who) : "拆开了 " + SF.esc(x.who) + " 的红包";
             return '<div class="sfr-i"><div><small>' + fmt(x.t) + "　" + lab + (x.amount != null ? " · ¥" + fmtAmt(x.amount) : "") + "</small><p>" + SF.esc(x.blessing || "") + "</p></div></div>";
-          }).join("") : '<p class="tip">还没有红包记录。在聊天里点「+」号里的「新春红包」就能发。</p>';
+          }).join("") + "</div>" : '<p class="tip">还没有红包记录。在聊天里点「+」号里的「新春红包」就能发。</p>');
         } else {
-          h += '<p class="tip">祝福池按角色分开存。让角色一次攒 12 句（AI 1 次），之后发红包时随机抽，每句只用一次。</p>' +
-            (chars.length ? SF.chipRow(chars.map(function (c) { return '<span class="sfchip' + (cid === c.id ? " on" : "") + '" data-c="' + SF.esc(c.id) + '">' + SF.esc(SF.cname(c)) + "</span>"; }).join("")) : '<p class="tip">没有读取到角色</p>');
+          h += "<h4>选择角色</h4>" + (chars.length ? SF.chipRow(chars.map(function (c) { return '<span class="sfchip' + (cid === c.id ? " on" : "") + '" data-c="' + SF.esc(c.id) + '">' + SF.esc(SF.cname(c)) + "</span>"; }).join("")) : '<p class="tip">没有读取到角色</p>');
           if (cid) {
             var p = await getPool(cid);
-            h += '<div class="sfrow" style="margin:6px 0 10px"><button class="sfb sm" data-a="gen">攒 12 句（AI 1 次）</button>' + (p.length ? '<button class="sfb sm ghost" data-a="clr">清空</button>' : "") + "</div>";
-            h += p.map(function (x, i) { return '<div class="sfr-i"><p>' + SF.esc(x) + '</p><button class="sfb sm ghost" data-x="' + i + '">删</button></div>'; }).join("") || '<p class="tip">池子是空的。</p>';
+            h += "<h4>祝福池 · " + p.length + " 句</h4>" + '<div class="sf-card"><div class="sfrow"><button class="sfb" style="flex:1" data-a="gen" type="button">攒 12 句（AI 1 次）</button>' + (p.length ? '<span class="sf-lnk" data-a="clr">清空</span>' : "") + "</div>" +
+              p.map(function (x, i) { return '<div class="sfr-i"><p>' + SF.esc(x) + '</p><span class="sf-lnk" data-x="' + i + '">删除</span></div>'; }).join("") + "</div>";
           }
         }
         L.body.innerHTML = h; SF.fadeRows(L.body);
@@ -237,44 +271,58 @@
     }
   };
 
-  // 聊天卡片 + 弹层样式（常驻）
-  SF.cssChat.push([
-    '.sfc-rp{position:relative;width:236px;max-width:100%;border-radius:14px;overflow:hidden;background:linear-gradient(160deg,#dc3a36,#a51a26);border:1.5px solid #f0c15a;box-shadow:0 4px 14px rgba(120,10,20,.4);color:#fff3dc;font-family:-apple-system,"PingFang SC",sans-serif;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}',
-    ".sfc-rp-top{display:flex;gap:12px;align-items:center;padding:14px 14px 12px}",
-    '.sfc-coin{flex:0 0 44px;height:44px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff0b8,#e0a533);color:#8f1420;font:700 24px/44px "STKaiti","KaiTi","Songti SC",serif;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.35)}',
-    '.sfc-rp-t strong{display:block;font:700 16px/1.3 "STKaiti","KaiTi","Songti SC",serif;letter-spacing:.12em;color:#ffe29a}',
-    ".sfc-rp-t em{display:block;margin-top:4px;font-style:normal;font-size:12.5px;line-height:1.5;color:#ffeccc;word-break:break-all}",
-    ".sfc-rp-bot{padding:6px 14px;font-size:11px;background:rgba(80,8,16,.45);color:#ffd9a0}",
-    ".sfc-rp.sealed{cursor:pointer}.sfc-rp.sealed .sfc-coin{animation:sfcPulse 1.6s ease-in-out infinite}",
-    ".sfc-rp.open{animation:sfcPop .6s}.sfc-rp.open .sfc-coin{animation:sfcSpin .7s}",
-    "@keyframes sfcPulse{50%{transform:scale(1.1);box-shadow:0 0 14px rgba(255,214,120,.9)}}",
-    "@keyframes sfcSpin{to{transform:rotateY(360deg)}}@keyframes sfcPop{40%{transform:scale(1.05)}}",
-    ".sfc-spark{position:absolute;width:6px;height:6px;border-radius:50%;background:#ffe29a;animation:sfcSpark .9s ease-out forwards}",
-    "@keyframes sfcSpark{to{transform:translate(var(--dx),var(--dy)) scale(.2);opacity:0}}",
-    '.sfc-amt{display:block;margin-top:2px;font:700 20px/1.3 "STKaiti","KaiTi","Songti SC",serif;color:#fff3dc}',
-    `.sfx{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,"PingFang SC",sans-serif;-webkit-user-select:none;user-select:none}
-.sfx-bg{position:absolute;inset:0;background:radial-gradient(circle at 50% 42%,rgba(150,28,38,.88),rgba(12,4,14,.95));-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);opacity:0;transition:opacity .4s}
-.sfx-env{position:relative;width:min(74vw,300px);height:calc(min(74vw,300px) * 1.4);border-radius:16px;background:linear-gradient(160deg,#e24a40,#a51a26);border:2px solid #f0c15a;box-shadow:0 24px 70px rgba(0,0,0,.55),0 0 80px rgba(255,190,90,.28);perspective:900px}
-.sfx-flap{position:absolute;left:1%;right:1%;top:0;height:46%;background:linear-gradient(180deg,#f2594c,#c22a2e);clip-path:polygon(0 0,100% 0,50% 100%);transform-origin:top center;transition:transform .75s cubic-bezier(.3,.9,.3,1);z-index:4}
-.sfx.open .sfx-flap{transform:rotateX(180deg);z-index:1}
-.sfx-paper{position:absolute;left:7%;right:7%;top:10%;height:70%;border-radius:10px;background:linear-gradient(180deg,#fff6df,#f4dcaa);z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:10px;padding:14% 14px 0;text-align:center;color:#8f1420;transform:translateY(40%);opacity:0;transition:transform .85s cubic-bezier(.2,.9,.25,1) .3s,opacity .4s .3s}
-.sfx.open .sfx-paper{transform:translateY(-14%);opacity:1}
-.sfx-paper small{font:600 12px/1 "STKaiti","KaiTi",serif;letter-spacing:.3em;color:#b3322a}
-.sfx-amt{font:700 38px/1.1 "STKaiti","KaiTi","Songti SC",serif;color:#a51a26;font-variant-numeric:tabular-nums}
-.sfx-paper p{margin:0;font:15px/1.8 "STKaiti","KaiTi","Songti SC",serif;color:#7a2418}
-.sfx-body{position:absolute;left:0;right:0;bottom:0;height:56%;background:linear-gradient(170deg,#ea5243,#b01f2b);clip-path:polygon(0 22%,50% 0,100% 22%,100% 100%,0 100%);border-radius:0 0 14px 14px;z-index:3;display:flex;align-items:flex-end;justify-content:center;padding-bottom:16px}
-.sfx-body span{font:600 13px/1 "STKaiti","KaiTi",serif;letter-spacing:.2em;color:#ffd9a0}
-.sfx-open{position:absolute;left:50%;top:46%;width:66px;height:66px;margin:-33px 0 0 -33px;padding:0;border:0;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff0b8,#e0a533);color:#8f1420;font:700 30px/66px "STKaiti","KaiTi","Songti SC",serif;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.4);animation:sfxPulse 1.6s ease-in-out infinite}
+  // 聊天卡片 + 全屏红包样式（常驻）
+  SF.cssChat.push(`
+.sfc-rp{position:relative;width:240px;max-width:100%;border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#f08a6e,#e25a44);color:#fff;font-family:-apple-system,"PingFang SC",sans-serif;box-shadow:0 6px 18px rgba(214,80,60,.28);-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;cursor:pointer;transition:transform .15s}
+.sfc-rp:active{transform:scale(.98)}
+.sfc-rp::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 88% 14%,rgba(255,255,255,.28),transparent 42%),radial-gradient(circle at 8% 96%,rgba(255,255,255,.16),transparent 46%)}
+.sfc-rp.done{background:linear-gradient(135deg,#e9a08c,#d98570)}
+.sfc-rp-in{position:relative;display:flex;gap:12px;align-items:center;padding:14px 14px 12px}
+.sfc-env{position:relative;flex:0 0 34px;height:44px;border-radius:7px;background:linear-gradient(180deg,#ffeadf,#ffcdb8);box-shadow:0 2px 6px rgba(120,30,20,.25)}
+.sfc-env::before{content:"";position:absolute;left:0;right:0;top:0;height:22px;border-radius:7px 7px 50% 50%/7px 7px 100% 100%;border-bottom:1.5px solid rgba(214,100,80,.45)}
+.sfc-env::after{content:"";position:absolute;left:50%;top:16px;width:9px;height:9px;margin-left:-4.5px;border-radius:50%;background:#f3c24f;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.sfc-rp-t{min-width:0}
+.sfc-rp-t strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:600 15px/1.4 -apple-system,"PingFang SC",sans-serif}
+.sfc-rp-t em{display:block;margin-top:3px;font-style:normal;font-size:12px;opacity:.88}
+.sfc-rp-bot{position:relative;margin:0 14px;padding:7px 0 10px;border-top:1px solid rgba(255,255,255,.28);font-size:11.5px;opacity:.92}
+.sfc-rp-dot{position:absolute;right:9px;top:9px;width:9px;height:9px;border-radius:50%;background:#ff3b3b;box-shadow:0 0 0 2px rgba(255,255,255,.65)}
+.sf-card input+.sfrow-h{margin-top:10px}
+.sfx{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;font-family:-apple-system,"PingFang SC",sans-serif;-webkit-user-select:none;user-select:none}
+.sfx-bg{position:absolute;inset:0;background:radial-gradient(circle at 50% 40%,#2e1a34,#0e0714);opacity:0;transition:opacity .4s}
+.sfx-fw{position:absolute;inset:0;pointer-events:none;stroke:rgba(236,200,130,.55);stroke-width:1;fill:rgba(236,200,130,.55);stroke-linecap:round;animation:sfxTw 3s ease-in-out infinite}
+@keyframes sfxTw{50%{opacity:.55}}
+.sfx-env{position:relative;width:min(76vw,300px);aspect-ratio:300/450;border-radius:18px;overflow:hidden;background:#c8402f;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+.sfx-paper{position:absolute;left:8%;right:8%;top:4%;height:40%;border-radius:10px;background:linear-gradient(180deg,#fff6df,#f6e0b4);z-index:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:9% 12px 0;text-align:center;color:#8f1420;transform:scale(.94) translateY(8%);transition:transform .7s cubic-bezier(.2,.9,.25,1) .25s}
+.sfx.open .sfx-paper{transform:none}
+.sfx-paper small{font:600 11px/1 "Songti SC","STSong",serif;letter-spacing:.3em;color:#b3322a}
+.sfx-amt{font:700 32px/1.1 "Songti SC","STSong",serif;color:#a51a26;font-variant-numeric:tabular-nums}
+.sfx-paper p{margin:0;font:14px/1.7 "Songti SC","STSong",serif;color:#7a2418}
+.sfx-face{position:absolute;inset:0;width:100%;height:100%;z-index:2}
+.sfx-from{position:absolute;left:0;right:0;bottom:7%;z-index:3;text-align:center;font:600 12px/1 "Songti SC","STSong",serif;letter-spacing:.22em;color:#ffd9b0}
+.sfx-tassel{position:absolute;left:50%;top:38%;width:0;z-index:3;transition:opacity .4s,transform .6s}
+.sfx-tassel i{position:absolute;left:-.75px;top:0;width:1.5px;height:44px;background:#f0c970}
+.sfx-tassel b{position:absolute;left:-8px;top:42px;width:16px;height:16px;border-radius:50%;border:2px solid #f0c970;background:#e24a3a}
+.sfx-tassel u{position:absolute;left:-7px;top:58px;width:14px;height:54px;background:linear-gradient(180deg,#f7d98a,#d9a043);clip-path:polygon(25% 0,75% 0,100% 100%,0 100%)}
+.sfx.open .sfx-tassel{opacity:0;transform:translateY(20px)}
+.sfx-flap{position:absolute;inset:0;z-index:4;transition:transform .75s cubic-bezier(.3,.9,.3,1),opacity .55s}
+.sfx-flap svg{position:absolute;inset:0;width:100%;height:100%}
+.sfx.open .sfx-flap{transform:translateY(-34%);opacity:0}
+.sfx-ttl{position:absolute;left:0;right:0;top:12%;text-align:center;font:600 26px/1 "Songti SC","STSong",serif;letter-spacing:.2em;color:#ffe3a8;text-shadow:0 2px 8px rgba(120,20,10,.35)}
+.sfx-open{position:absolute;left:50%;top:37.3%;width:74px;height:74px;margin:-37px 0 0 -37px;padding:0;border:0;background:none;z-index:5;animation:sfxPulse 1.6s ease-in-out infinite;filter:drop-shadow(0 4px 8px rgba(0,0,0,.35))}
+.sfx-open svg{position:absolute;inset:0;width:100%;height:100%}
+.sfx-open span{position:relative;font:700 30px/74px "Songti SC","STSong",serif;color:#9a1f1a}
 .sfx.open .sfx-open{animation:sfxGone .6s forwards;pointer-events:none}
-@keyframes sfxPulse{50%{transform:scale(1.08);box-shadow:0 0 24px rgba(255,214,120,.9)}}
+@keyframes sfxPulse{50%{transform:scale(1.07)}}
 @keyframes sfxGone{to{transform:rotateY(540deg) scale(0);opacity:0}}
 .sfx-p{position:fixed;border-radius:50%;pointer-events:none;background:radial-gradient(circle at 35% 30%,#fff0b8,#e0a533);animation:sfxP 1.2s cubic-bezier(.2,.8,.3,1) forwards}
 @keyframes sfxP{0%{transform:translate(0,0) scale(.2);opacity:1}70%{opacity:1}100%{transform:translate(var(--dx),calc(var(--dy) + 80px)) scale(1);opacity:0}}
 .sfx-hint{position:absolute;left:0;right:0;bottom:calc(9% + env(safe-area-inset-bottom));text-align:center;color:rgba(255,235,200,.85);letter-spacing:.4em;font-size:12px;opacity:0;transition:opacity .5s}
-@media (prefers-reduced-motion:reduce){.sfx *{animation:none!important;transition:none!important}}`
-  ].join("\n"));
+@media (prefers-reduced-motion:reduce){.sfx *,.sfc-rp{animation:none!important;transition:none!important}}
+`);
+
   SF.cssApp.push([
     ".sfr-i{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 2px;border-bottom:1px solid var(--hair)}",
+    ".sf-card .sfr-i:last-child{border-bottom:0}",
     ".sfr-i small{display:block;font-size:11px;color:var(--k);margin-bottom:3px}.sfr-i p{margin:0;font-size:13.5px;line-height:1.6;flex:1;color:var(--tx)}"
   ].join("\n"));
 })(window.__SF);

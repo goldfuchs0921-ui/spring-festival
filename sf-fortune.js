@@ -98,17 +98,17 @@
       async function render() {
         var s = await load(), got = TYPES.filter(function (t) { return s.cards[t.k] > 0; }).length;
         var done = TASKS.filter(function (t) { return s.done[t.k]; }).length;
-        var h = '<div class="sff-grid">' + TYPES.map(function (t) {
+        var h = '<div class="sff-hero"><b>' + got + "<span>/5</span></b><small>已集福卡　·　今日福气 " + done + "/" + TASKS.length + "</small></div>" + '<div class="sff-grid">' + TYPES.map(function (t) {
           var n = s.cards[t.k] || 0;
           return '<div class="sff-c' + (n ? "" : " off") + '"><b>' + t.ch + "</b>" + (n > 1 ? "<i>×" + n + "</i>" : "") + "</div>";
         }).join("") + "</div>";
-        h += '<p class="tip">已集 ' + got + "/5　·　今日福气 " + done + "/" + TASKS.length + "（每个任务每天一次，各抽一张福卡，福卡可能重复）</p>";
-        h += TASKS.map(function (t) {
+        h += '<p class="tip" style="margin-top:12px">每个任务每天一次，各抽一张福卡，福卡可能重复。</p>';
+        h += "<h4>今日福气</h4>" + '<div class="sf-card">' + TASKS.map(function (t) {
           var ok = s.done[t.k];
           return '<div class="sff-t' + (ok ? " ok" : "") + '"><div><b>' + t.t + "</b><small>" + t.d + "</small></div>" +
             (ok ? "<span>已完成</span>" : t.k === "sign" ? '<button class="sfb sm" data-a="sign">签到</button>' : "<span>去完成</span>") + "</div>";
-        }).join("");
-        if (got === 5) h += '<div class="sfrow" style="margin-top:18px;justify-content:center"><button class="sfb" data-a="gift">' + (s.gift ? "再看看新年大礼" : "领取新年大礼") + "</button></div>";
+        }).join("") + "</div>";
+        if (got === 5) h += '<button class="sfb block" style="margin-top:18px" data-a="gift" type="button">' + (s.gift ? "再看看新年大礼" : "领取新年大礼") + "</button>";
         L.body.innerHTML = h;
       }
       view = render;
@@ -127,6 +127,7 @@
   };
 
   SF.cssApp.push([
+    ".sff-hero{margin:0 0 14px}.sff-hero b{font:200 54px/1 -apple-system,\"PingFang SC\",sans-serif;color:var(--big)}.sff-hero b span{font-size:22px;color:var(--acc);margin-left:4px}.sff-hero small{display:block;margin-top:8px;font-size:10px;letter-spacing:5px;color:var(--k)}",
     ".sff-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin:8px 0 12px}",
     '.sff-c{position:relative;aspect-ratio:3/4;border-radius:10px;background:linear-gradient(160deg,#d4262f,#8f1420);border:1.5px solid #ffd77a;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 14px rgba(255,215,122,.25)}',
     '.sff-c b{font:700 34px/1 "STKaiti","KaiTi","Songti SC",serif;color:#ffe29a;text-shadow:0 1px 6px rgba(0,0,0,.4)}',
@@ -134,6 +135,7 @@
     ".sff-c i{position:absolute;right:-5px;top:-7px;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:9px;background:#ffd77a;color:#7a1010;font:700 11px/18px sans-serif;text-align:center;font-style:normal}",
     ".sff-t{display:flex;align-items:center;justify-content:space-between;padding:11px 2px;border-bottom:1px solid var(--hair)}",
     ".sff-t b{display:block;font-size:14px;font-weight:500;color:var(--tx)}.sff-t small{font-size:11.5px;color:var(--k)}",
+    ".sf-card .sff-t:first-child{padding-top:2px}.sf-card .sff-t:last-child{border-bottom:0;padding-bottom:2px}",
     ".sff-t>span{font-size:12px;color:var(--acc)}.sff-t.ok b{opacity:.5;text-decoration:line-through}.sff-t.ok>span{color:#4f9d63}",
     ".sff-pop{position:absolute;inset:0;z-index:80;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,6,20,.5);color:#ffe3a1;font:600 16px/1 serif;letter-spacing:.1em}",
     ".sff-pop .sff-card{width:112px;height:150px;border-radius:12px;background:linear-gradient(160deg,#d4262f,#8f1420);border:2px solid #ffd77a;display:flex;align-items:center;justify-content:center;box-shadow:0 0 40px rgba(255,200,90,.55);animation:sffFlip .6s ease-out}",

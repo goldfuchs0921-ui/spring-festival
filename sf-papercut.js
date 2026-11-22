@@ -35,8 +35,8 @@
         var small = await shrink(item.img, 360, 0.8);
         await SF.roche.chat.createCard({
           conversationId: c.id || c.conversationId, messageType: "paper-cut", isMe: true,
-          cardData: { img: small, fold: item.fold, name: item.name || "" },
-          modelText: "我剪了一张名叫《" + (item.name || "窗花") + "》的新春窗花送给你（" + item.fold + "折对称剪纸，红纸镂空的图案）。"
+          cardData: { img: small, fold: item.fold, name: item.name || "", desc: item.desc || "", shape: item.shape || "sq" },
+          modelText: "我剪了一张名叫《" + (item.name || "窗花") + "》的新春窗花送给你（" + item.fold + "折对称剪纸，" + (item.shape === "ci" ? "圆形" : "方形") + "）" + descOf(item) + "。"
         });
         SF.toast("已发送"); L.close();
       } catch (err) { SF.toast("发送失败：" + (err.message || err)); a.textContent = SF.esc(c.name || c.title || "聊天"); }
@@ -61,17 +61,18 @@
   }
   function pad2(n) { return (n < 10 ? "0" : "") + n; }
   function dateStr(t) { var d = new Date(t); return (d.getMonth() + 1) + "月" + d.getDate() + "日"; }
+  function descOf(it) { return (it.desc ? "，画面是：" + it.desc : ""); }
 
-  // 拼贴版式：[x, y, w, h, 旋转角]，都是占整块画板的比例
+  // 拼贴版式：每格都是正方形（圆形窗花显示成圆）。[x, y, 边长, 旋转角]，都按画板宽度的比例；h = 画板高/宽
   var TPL = [
-    { id: 1, c: [[0, 0, .5, .5], [.5, 0, .5, .5], [0, .5, .5, .5], [.5, .5, .5, .5]] },
-    { id: 2, c: [[0, 0, 1, .6], [0, .6, 1 / 3, .4], [1 / 3, .6, 1 / 3, .4], [2 / 3, .6, 1 / 3, .4]] },
-    { id: 3, c: [[0, 0, 1 / 3, .34], [1 / 3, 0, 1 / 3, .34], [2 / 3, 0, 1 / 3, .34], [0, .34, 2 / 3, .66], [2 / 3, .34, 1 / 3, .33], [2 / 3, .67, 1 / 3, .33]] },
-    { id: 4, c: [[0, 0, .62, 1], [.62, 0, .38, 1 / 3], [.62, 1 / 3, .38, 1 / 3], [.62, 2 / 3, .38, 1 / 3]] },
-    { id: 5, c: [[0, 0, .5, 1 / 3], [.5, 0, .5, 1 / 3], [0, 1 / 3, .5, 1 / 3], [.5, 1 / 3, .5, 1 / 3], [0, 2 / 3, .5, 1 / 3], [.5, 2 / 3, .5, 1 / 3]] },
-    { id: 6, c: [[.03, .04, .55, .41], [.42, .55, .55, .41]] },
-    { id: 7, c: [[.04, .04, .64, .48, -6], [.32, .46, .64, .5, 5]] },
-    { id: 8, c: [[0, 0, 1, 1]] }
+    { id: 1, h: 1, c: [[0, 0, .5], [.5, 0, .5], [0, .5, .5], [.5, .5, .5]] },
+    { id: 2, h: 1, c: [[0, 0, 2 / 3], [2 / 3, 0, 1 / 3], [2 / 3, 1 / 3, 1 / 3], [0, 2 / 3, 1 / 3], [1 / 3, 2 / 3, 1 / 3], [2 / 3, 2 / 3, 1 / 3]] },
+    { id: 3, h: 1, c: [[0, 0, 1 / 3], [1 / 3, 0, 1 / 3], [2 / 3, 0, 1 / 3], [0, 1 / 3, 2 / 3], [2 / 3, 1 / 3, 1 / 3], [2 / 3, 2 / 3, 1 / 3]] },
+    { id: 4, h: 1 / 3, c: [[0, 0, 1 / 3], [1 / 3, 0, 1 / 3], [2 / 3, 0, 1 / 3]] },
+    { id: 5, h: 1.5, c: [[0, 0, .5], [.5, 0, .5], [0, .5, .5], [.5, .5, .5], [0, 1, .5], [.5, 1, .5]] },
+    { id: 6, h: 1, c: [[.02, .04, .52], [.46, .44, .52]] },
+    { id: 7, h: 1, c: [[.04, .04, .62, -6], [.34, .34, .62, 5]] },
+    { id: 8, h: 1, c: [[0, 0, 1]] }
   ];
 
   // ---------- 查看页：大图左右滑动 + 底部缩略图条 ----------
@@ -81,8 +82,10 @@
     V.innerHTML = '<div class="sfv-bg"></div>' +
       '<div class="sfv-top"><button class="sfv-x" type="button">✕</button><span class="sfv-cnt"></span><button class="sfv-hr" type="button">♡</button></div>' +
       '<div class="sfv-stage"><div class="sfv-pg" data-s="p"><img draggable="false"></div><div class="sfv-pg" data-s="c"><img draggable="false"></div><div class="sfv-pg" data-s="n"><img draggable="false"></div></div>' +
-      '<div class="sfv-info"><div class="sfv-meta"><small>PAPERCUT</small><em></em></div><div class="sfv-name"><b></b><button class="sfv-ed" type="button">✎</button></div><p class="sfv-sub"></p>' +
-      '<div class="sfrow" style="justify-content:center;gap:10px;margin-top:12px"><button class="sfb sm" data-a="x" type="button">导出</button><button class="sfb sm" data-a="s" type="button">发给 TA</button><button class="sfb sm ghost" data-a="d" type="button">删除</button></div></div>' +
+      '<div class="sfv-info"><div class="sfv-meta"><small>PAPERCUT</small><em></em></div><div class="sfv-name"><b></b><button class="sfv-ed" type="button">✎</button></div>' +
+      '<p class="sfv-desc" data-a="ds"></p><p class="sfv-sub"></p>' +
+      '<div class="sfrow" style="gap:10px;margin-top:14px"><button class="sfb" style="flex:1" data-a="s" type="button">发给 TA</button><button class="sfb ghost" style="flex:1" data-a="x" type="button">导出</button></div>' +
+      '<div class="sfv-more"><span class="sf-lnk" data-a="sh"></span><span class="sf-lnk" data-a="d">删除</span></div></div>' +
       '<div class="sfv-strip"></div>';
     SF.appRoot.appendChild(V);
     var stage = V.querySelector(".sfv-stage"), strip = V.querySelector(".sfv-strip"), bgEl = V.querySelector(".sfv-bg"), pg = {};
@@ -91,7 +94,7 @@
     function persist() { return SF.st.set("cuts", items); }
     function setImg(el, it) {
       var im = el.querySelector("img");
-      if (it) { if (im.getAttribute("src") !== it.img) im.src = it.img; el.style.visibility = ""; } else el.style.visibility = "hidden";
+      if (it) { if (im.getAttribute("src") !== it.img) im.src = it.img; el.style.visibility = ""; el.classList.toggle("ci", it.shape === "ci"); } else el.style.visibility = "hidden";
     }
     function fill() { setImg(pg.p, items[idx - 1]); setImg(pg.c, items[idx]); setImg(pg.n, items[idx + 1]); }
     // 页面位置完全由手指位移 dx 决定；松手后的动画只是把 dx 推到终点
@@ -108,14 +111,16 @@
       V.querySelector(".sfv-cnt").textContent = (idx + 1) + " / " + items.length;
       V.querySelector(".sfv-meta em").textContent = pad2(idx + 1) + " / " + pad2(items.length);
       V.querySelector(".sfv-name b").textContent = it.name || "窗花";
-      V.querySelector(".sfv-sub").textContent = it.fold + " 折 · " + dateStr(it.t);
+      var d = V.querySelector(".sfv-desc"); d.textContent = it.desc || "点此添加描述"; d.classList.toggle("empty", !it.desc);
+      V.querySelector(".sfv-sub").textContent = it.fold + " 折 · " + (it.shape === "ci" ? "圆形" : "方形") + " · " + dateStr(it.t);
+      V.querySelector('[data-a="sh"]').textContent = it.shape === "ci" ? "改为方形显示" : "改为圆形显示";
       var hr = V.querySelector(".sfv-hr"); hr.textContent = it.fav ? "♥" : "♡"; hr.classList.toggle("on", !!it.fav);
     }
 
     // ----- 底部缩略图条：滚动聚焦 -----
     var prog = 0, tmr = 0;
     function buildStrip() {
-      strip.innerHTML = items.map(function (x, i) { return '<div class="sfv-t" data-i="' + i + '"><img src="' + x.img + '" draggable="false">' + (x.fav ? "<u>♥</u>" : "") + "</div>"; }).join("");
+      strip.innerHTML = items.map(function (x, i) { return '<div class="sfv-t' + (x.shape === "ci" ? " ci" : "") + '" data-i="' + i + '"><img src="' + x.img + '" draggable="false">' + (x.fav ? "<u>♥</u>" : "") + "</div>"; }).join("");
       focus();
     }
     function focus() {
@@ -206,11 +211,25 @@
       }
       inp.onblur = fin; inp.onkeydown = function (e) { if (e.key === "Enter") inp.blur(); };
     };
+    function editDesc() {
+      var d = V.querySelector(".sfv-desc"), it = items[idx], done = false;
+      var ta = SF.h("textarea", "sfv-ta"); ta.rows = 2; ta.maxLength = 40; ta.placeholder = "这张窗花剪的是什么？（40字内）"; ta.value = it.desc || "";
+      d.replaceWith(ta); ta.focus();
+      function fin() {
+        if (done) return; done = true;
+        it.desc = ta.value.trim().slice(0, 40); persist();
+        var p = SF.h("p", "sfv-desc"); p.dataset.a = "ds"; ta.replaceWith(p); info();
+      }
+      ta.onblur = fin;
+    }
     V.querySelector(".sfv-info").addEventListener("click", async function (e) {
       var b = e.target.closest("[data-a]"); if (!b) return;
-      if (b.dataset.a === "x") exportImg(items[idx]);
-      else if (b.dataset.a === "s") sendTo(items[idx]);
-      else if (b.dataset.a === "d") {
+      var a = b.dataset.a, it = items[idx];
+      if (a === "ds") editDesc();
+      else if (a === "x") exportImg(it);
+      else if (a === "s") sendTo(it);
+      else if (a === "sh") { it.shape = it.shape === "ci" ? "sq" : "ci"; persist(); fill(); info(); buildStrip(); scrollStrip(idx, false); }
+      else if (a === "d") {
         if (!(await SF.confirm("删除窗花", "确定删除这张窗花吗？"))) return;
         var gone = items.splice(idx, 1)[0]; await persist();
         var ws = await SF.st.get("cut_wall", null);
@@ -244,28 +263,29 @@
       });
       return out;
     }
+    function geo(c, h) { return "left:" + c[0] * 100 + "%;top:" + c[1] / h * 100 + "%;width:" + c[2] * 100 + "%;height:" + c[2] / h * 100 + "%" + (c[3] ? ";transform:rotate(" + c[3] + "deg)" : ""); }
     function render() {
       var t = tpl(), as = assign();
       var icons = TPL.map(function (x) {
-        return '<button class="sfp-ti' + (x.id === t.id ? " on" : "") + '" data-t="' + x.id + '" type="button">' + x.c.map(function (c) {
-          return '<i style="left:' + c[0] * 100 + "%;top:" + c[1] * 100 + "%;width:" + c[2] * 100 + "%;height:" + c[3] * 100 + "%" + (c[4] ? ";transform:rotate(" + c[4] + "deg)" : "") + '"></i>';
-        }).join("") + "</button>";
+        return '<button class="sfp-ti' + (x.id === t.id ? " on" : "") + '" data-t="' + x.id + '" type="button"><span class="ib" style="width:30px;height:' + (30 * x.h).toFixed(1) + 'px">' +
+          x.c.map(function (c) { return '<i style="' + geo(c, x.h) + '"></i>'; }).join("") + "</span></button>";
       }).join("");
       var h = '<div class="sfrow-h"><div class="sfrow-in sfp-tpl">' + icons + "</div></div>";
-      h += '<div class="sfp-board">' + t.c.map(function (c, i) {
+      h += '<div class="sfp-board" style="aspect-ratio:1/' + t.h + '">' + t.c.map(function (c, i) {
         var w = as[i];
-        return '<div class="sfp-c" data-c="' + i + '" style="left:' + c[0] * 100 + "%;top:" + c[1] * 100 + "%;width:" + c[2] * 100 + "%;height:" + c[3] * 100 + "%" + (c[4] ? ";transform:rotate(" + c[4] + "deg)" : "") + '"><div class="sfp-ci">' +
-          (w ? '<img src="' + w.img + '" draggable="false">' : "<span>+</span>") + "</div>" + (w ? '<button class="sfp-sw" data-sw="' + i + '" type="button">⇄</button>' : "") + "</div>";
+        return '<div class="sfp-c' + (w && w.shape === "ci" ? " ci" : "") + '" data-c="' + i + '" style="' + geo(c, t.h) + '"><div class="sfp-ci">' +
+          (w ? '<img src="' + w.img + '" draggable="false">' + (w.desc ? '<em class="sfp-cap">' + SF.esc(w.desc) + "</em>" : "") : "<span>+</span>") + "</div>" +
+          (w ? '<button class="sfp-sw" data-sw="' + i + '" type="button">⇄</button>' : "") + "</div>";
       }).join("") + "</div>";
-      h += '<div class="sfrow" style="justify-content:center;margin-top:16px;gap:10px"><button class="sfb sm" data-a="exp" type="button">导出拼贴图</button><button class="sfb sm ghost" data-a="all" type="button">浏览全部（' + items.length + "）</button></div>";
+      h += '<div class="sfp-acts2"><button class="sfb" style="flex:1" data-a="exp" type="button">导出拼贴图</button><span class="sf-lnk" data-a="all">浏览全部 ' + items.length + "</span></div>";
       L.body.innerHTML = h; SF.fadeRows(L.body);
     }
     function pick(i) {
       if (!items.length) { SF.toast("还没有作品，先去剪一张"); return; }
       var P = SF.layer(SF.appRoot, "选择窗花", { k: "GALLERY" });
       P.body.innerHTML = '<div class="sfp-wall">' + items.map(function (x, k) {
-        return '<div class="sfp-it" data-k="' + k + '"><div class="sfp-th"><img src="' + x.img + '" draggable="false"></div><small>' + SF.esc(x.name || "窗花") + "</small></div>";
-      }).join("") + '</div><div class="sfrow" style="justify-content:center;margin-top:14px"><button class="sfb sm ghost" data-a="clr" type="button">清空这一格</button></div>';
+        return '<div class="sfp-it" data-k="' + k + '"><div class="sfp-th' + (x.shape === "ci" ? " ci" : "") + '"><img src="' + x.img + '" draggable="false"></div><small>' + SF.esc(x.name || "窗花") + "</small></div>";
+      }).join("") + '</div><div class="sfrow" style="justify-content:center;margin-top:14px"><span class="sf-lnk" data-a="clr">清空这一格</span></div>';
       P.body.onclick = async function (e) {
         var a = e.target.closest("[data-k],[data-a]"); if (!a) return;
         st.cells[i] = a.dataset.a === "clr" ? null : items[+a.dataset.k].id;
@@ -275,36 +295,38 @@
     async function exportCollage() {
       var t = tpl(), as = assign();
       if (!as.some(Boolean)) { SF.toast("还没有放入窗花"); return; }
-      var Wd = 1080, Ht = 1440, cv = document.createElement("canvas"); cv.width = Wd; cv.height = Ht;
+      var Wd = 1080, pad = 48, bw = Wd - pad * 2, bh = bw * t.h, Ht = Math.round(bh + pad * 2 + 64);
+      var cv = document.createElement("canvas"); cv.width = Wd; cv.height = Ht;
       var g = cv.getContext("2d"), gr = g.createLinearGradient(0, 0, 0, Ht);
       gr.addColorStop(0, "#f6e6c8"); gr.addColorStop(1, "#efd3b0"); g.fillStyle = gr; g.fillRect(0, 0, Wd, Ht);
-      var pad = 48, bw = Wd - pad * 2, bh = Ht - pad * 2 - 56;
       for (var i = 0; i < t.c.length; i++) {
         var w = as[i]; if (!w) continue;
-        var c = t.c[i], cw = c[2] * bw - 20, ch = c[3] * bh - 20, cx = pad + c[0] * bw + 10 + cw / 2, cy = pad + c[1] * bh + 10 + ch / 2;
+        var c = t.c[i], sz = c[2] * bw - 16, cx = pad + c[0] * bw + c[2] * bw / 2, cy = pad + c[1] * bw + c[2] * bw / 2;
         var im = await loadImg(w.img); if (!im) continue;
-        g.save(); g.translate(cx, cy); if (c[4]) g.rotate(c[4] * Math.PI / 180);
-        rrect(g, -cw / 2, -ch / 2, cw, ch, 28); g.clip();
-        var s = Math.max(cw / im.width, ch / im.height); g.drawImage(im, -im.width * s / 2, -im.height * s / 2, im.width * s, im.height * s); g.restore();
+        g.save(); g.translate(cx, cy); if (c[3]) g.rotate(c[3] * Math.PI / 180);
+        if (w.shape === "ci") { g.beginPath(); g.arc(0, 0, sz / 2, 0, 7); g.closePath(); } else rrect(g, -sz / 2, -sz / 2, sz, sz, sz * 0.08);
+        g.clip(); g.drawImage(im, -sz / 2, -sz / 2, sz, sz);
+        if (w.desc) {
+          g.fillStyle = "rgba(0,0,0,.5)"; g.fillRect(-sz / 2, sz / 2 - 46, sz, 46);
+          g.fillStyle = "#fff"; g.font = '24px "PingFang SC",sans-serif'; g.textAlign = "center"; g.fillText(w.desc.slice(0, 16), 0, sz / 2 - 14);
+        }
+        g.restore();
       }
-      g.fillStyle = "rgba(150,40,30,.75)"; g.font = '30px "PingFang SC",sans-serif'; g.textAlign = "center"; g.fillText("新春窗花", Wd / 2, Ht - pad + 8);
+      g.fillStyle = "rgba(150,40,30,.75)"; g.font = '30px "PingFang SC",sans-serif'; g.textAlign = "center"; g.fillText("新春窗花", Wd / 2, Ht - pad + 4);
       var url = cv.toDataURL("image/jpeg", 0.92), P = SF.layer(SF.appRoot, "拼贴图", { k: "GALLERY" });
-      P.body.innerHTML = '<div class="sfp-big"><img src="' + url + '"></div><div class="sfrow" style="justify-content:center;margin-top:12px"><button class="sfb sm" type="button">导出 / 分享</button></div>';
+      P.body.innerHTML = '<div class="sfp-big"><img src="' + url + '"></div><button class="sfb block" style="margin-top:14px" type="button">导出 / 分享</button>';
       P.body.querySelector("button").onclick = function () { exportImg({ img: url }); };
     }
     L.body.onclick = async function (e) {
       var t = e.target.closest("[data-t],[data-sw],[data-c],[data-a]"); if (!t) return;
+      var reload = async function () { st = (await SF.st.get("cut_wall", st)) || st; if (!st.cells) st.cells = {}; render(); };
       if (t.dataset.t) { st.tpl = +t.dataset.t; await SF.st.set("cut_wall", st); render(); }
       else if (t.dataset.sw != null) pick(+t.dataset.sw);
       else if (t.dataset.c != null) {
         var i = +t.dataset.c, w = assign()[i];
-        if (w) viewer(items, items.indexOf(w), async function () { st = (await SF.st.get("cut_wall", st)) || st; if (!st.cells) st.cells = {}; render(); });
-        else pick(i);
+        if (w) viewer(items, items.indexOf(w), reload); else pick(i);
       } else if (t.dataset.a === "exp") exportCollage();
-      else if (t.dataset.a === "all") {
-        if (items.length) viewer(items, 0, async function () { st = (await SF.st.get("cut_wall", st)) || st; if (!st.cells) st.cells = {}; render(); });
-        else SF.toast("还没有作品");
-      }
+      else if (t.dataset.a === "all") { if (items.length) viewer(items, 0, reload); else SF.toast("还没有作品"); }
     };
     render();
   }
@@ -315,7 +337,8 @@
     mountCard: function (c, m, r) {
       SF.setRoche(r);
       var cd = m.cardData || {};
-      var d = SF.h("div", "sfc-pc", '<img draggable="false"><span>' + SF.esc(cd.name ? "《" + cd.name + "》" : "新春窗花") + " · " + SF.esc(cd.fold || "") + "折</span>");
+      var d = SF.h("div", "sfc-pc", '<img draggable="false"><span>' + SF.esc(cd.name ? "《" + cd.name + "》" : "新春窗花") + " · " + SF.esc(cd.fold || "") + "折</span>" + (cd.desc ? "<em>" + SF.esc(cd.desc) + "</em>" : ""));
+      if (cd.shape === "ci") d.classList.add("ci");
       d.querySelector("img").src = cd.img || "";
       c.replaceChildren(d);
     },
@@ -324,14 +347,16 @@
       var L = SF.layer(SF.appRoot, "剪纸摊", { full: true, k: "PAPERCUT" });
       var fold = 4, circle = false, color = 0, tool = "line", wi = 1, hist = [], drawing = false, last = null, lastSnd = 0;
       L.body.innerHTML =
-        '<div class="sfp-bar" data-g="fold"><span class="sfchip" data-v="2">2折</span><span class="sfchip on" data-v="4">4折</span><span class="sfchip" data-v="8">8折</span></div>' +
-        '<div class="sfp-bar" data-g="shape"><span class="sfchip on" data-v="sq">方形</span><span class="sfchip" data-v="ci">圆形</span><span class="sfp-sp"></span>' +
-        '<i class="sfp-dot on" data-g="color" data-v="0" style="background:#c8202b"></i><i class="sfp-dot" data-g="color" data-v="1" style="background:#e0402f"></i><i class="sfp-dot" data-g="color" data-v="2" style="background:#9a1624"></i></div>' +
+        '<div class="sf-card sfp-set">' +
+        '<div class="sfp-bar" data-g="fold"><b>折数</b><span class="sfchip" data-v="2">2折</span><span class="sfchip on" data-v="4">4折</span><span class="sfchip" data-v="8">8折</span></div>' +
+        '<div class="sfp-bar" data-g="shape"><b>形状</b><span class="sfchip on" data-v="sq">方形</span><span class="sfchip" data-v="ci">圆形</span><span class="sfp-sp"></span>' +
+        '<i class="sfp-dot on" data-g="color" data-v="0" style="background:#c8202b"></i><i class="sfp-dot" data-g="color" data-v="1" style="background:#e0402f"></i><i class="sfp-dot" data-g="color" data-v="2" style="background:#9a1624"></i></div></div>' +
         '<div class="sfp-stage"><canvas class="sfp-cv" width="' + S + '" height="' + S + '"></canvas></div>' +
-        '<div class="sfp-bar" data-g="tool"><span class="sfchip on" data-v="line">画线</span><span class="sfchip" data-v="dot">圆点</span><span class="sfchip" data-v="diamond">菱形</span><span class="sfchip" data-v="star">星</span></div>' +
-        '<div class="sfp-bar" data-g="size"><span class="sfchip" data-v="0">细</span><span class="sfchip on" data-v="1">中</span><span class="sfchip" data-v="2">粗</span></div>' +
-        '<p class="tip">在红纸上滑动就是“剪掉”，虚线是折痕，对称的图案会自动出现。</p>' +
-        '<div class="sfrow" style="justify-content:center;flex-wrap:wrap"><button class="sfb sm ghost" data-a="undo">撤销</button><button class="sfb sm ghost" data-a="clear">清空</button><button class="sfb sm" data-a="save">保存到作品墙</button><button class="sfb sm ghost" data-a="wall">作品墙</button></div>';
+        '<div class="sfp-mini"><span class="sf-lnk" data-a="undo">↶ 撤销</span><span class="sf-lnk" data-a="clear">清空</span></div>' +
+        '<div class="sf-card sfp-set">' +
+        '<div class="sfp-bar" data-g="tool"><b>剪法</b><span class="sfchip on" data-v="line">画线</span><span class="sfchip" data-v="dot">圆点</span><span class="sfchip" data-v="diamond">菱形</span><span class="sfchip" data-v="star">星</span></div>' +
+        '<div class="sfp-bar" data-g="size"><b>粗细</b><span class="sfchip" data-v="0">细</span><span class="sfchip on" data-v="1">中</span><span class="sfchip" data-v="2">粗</span></div></div>' +
+        '<div class="sfrow sfp-acts"><button class="sfb ghost" data-a="wall" type="button">作品墙</button><button class="sfb" style="flex:1" data-a="save" type="button">保存到作品墙</button></div>';
       var cv = L.body.querySelector(".sfp-cv"), g = cv.getContext("2d");
       var m = document.createElement("canvas"); m.width = m.height = S;
       var mg = m.getContext("2d");
@@ -417,7 +442,7 @@
           var nm = await askName("窗花 " + (arr0.length + 1));
           if (nm == null) return;
           var arr = await SF.st.get("cuts", []);
-          arr.unshift({ id: Date.now(), t: Date.now(), name: nm, fold: fold, img: snapshot(640) });
+          arr.unshift({ id: Date.now(), t: Date.now(), name: nm, fold: fold, shape: circle ? "ci" : "sq", desc: "", img: snapshot(640) });
           if (arr.length > 40) arr.length = 40;
           if (await SF.st.set("cuts", arr)) { SF.toast("已保存到作品墙"); if (SF.sfx) SF.sfx.save(); if (SF.fortune) SF.fortune.award("cut"); }
           else SF.toast("保存失败，存储空间可能不足");
@@ -428,47 +453,62 @@
   };
 
   SF.cssApp.push(`
-.sfp-bar{display:flex;align-items:center;flex-wrap:wrap;margin:2px 0 4px}.sfp-sp{flex:1}
-.sfp-dot{width:22px;height:22px;border-radius:50%;margin-left:10px;border:2px solid rgba(255,255,255,.4);box-sizing:border-box}.sfp-dot.on{border-color:var(--btx);box-shadow:0 0 8px var(--acc)}
-.sfp-stage{display:flex;justify-content:center;margin:8px 0}
-.sfp-cv{width:min(100%,46vh);aspect-ratio:1;touch-action:none;border-radius:6px;background:#f5e6c8;box-shadow:0 6px 22px rgba(0,0,0,.4)}
+.sfp-set{margin-bottom:10px;padding:10px 14px}
+.sfp-bar{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;margin:4px 0}.sfp-bar b{flex:0 0 40px;font-size:11px;font-weight:400;letter-spacing:.2em;color:var(--k)}.sfp-bar .sfchip{margin:0}.sfp-sp{flex:1}
+.sfp-dot{width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.5);box-sizing:border-box}.sfp-dot.on{border-color:var(--btx);box-shadow:0 0 8px var(--acc)}
+.sfp-stage{display:flex;justify-content:center;margin:12px 0 6px}
+.sfp-cv{width:min(100%,44vh);aspect-ratio:1;touch-action:none;border-radius:8px;background:#f5e6c8;box-shadow:0 6px 22px rgba(0,0,0,.35)}
+.sfp-mini{display:flex;justify-content:flex-end;gap:16px;margin:0 4px 10px}
+.sfp-acts{margin-top:14px;gap:10px}.sfp-acts .sfb{white-space:nowrap}
 .sfp-wall{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.sfp-th{aspect-ratio:1;border-radius:10px;overflow:hidden;border:1.5px solid var(--cbd)}.sfp-th img,.sfp-big img{width:100%;height:100%;display:block;object-fit:cover}
-.sfp-big{border-radius:10px;overflow:hidden;border:2px solid var(--cbd)}
+.sfp-th{aspect-ratio:1;border-radius:12px;overflow:hidden;border:1.5px solid var(--cbd)}.sfp-th.ci{border-radius:50%}
+.sfp-th img,.sfp-big img{width:100%;height:100%;display:block;object-fit:cover}
+.sfp-big{border-radius:12px;overflow:hidden;border:1px solid var(--cbd)}
 .sfp-it small{display:block;margin-top:5px;text-align:center;font-size:11.5px;color:var(--ctx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sfp-tpl{padding-top:6px}
-.sfp-ti{position:relative;flex:0 0 40px;height:52px;padding:0;border-radius:8px;border:2px solid var(--cbd);background:var(--cbg);transition:transform .2s,border-color .2s}
+.sfp-ti{position:relative;flex:0 0 46px;height:56px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:10px;border:1.5px solid var(--cbd);background:var(--cbg);transition:transform .2s,border-color .2s}
+.sfp-ti .ib{position:relative;display:block}
 .sfp-ti i{position:absolute;border-radius:2px;background:var(--cbd);transform-origin:center}
 .sfp-ti.on{border-color:var(--acc);transform:translateY(-2px) scale(1.06)}.sfp-ti.on i{background:var(--acc)}
-.sfp-board{position:relative;width:100%;aspect-ratio:3/4;margin-top:10px;border-radius:16px;background:var(--cbg);border:1px solid var(--cbd)}
+.sfp-board{position:relative;width:100%;margin-top:12px;border-radius:18px;background:var(--card);border:1px solid var(--hair)}
 .sfp-c{position:absolute}
-.sfp-ci{position:absolute;inset:4px;border-radius:12px;overflow:hidden;background:rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;color:var(--k);font-size:26px;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.sfp-ci{position:absolute;inset:4px;border-radius:14%;overflow:hidden;background:rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;color:var(--k);font-size:26px;box-shadow:0 2px 10px rgba(0,0,0,.16)}
+.sfp-c.ci .sfp-ci{border-radius:50%}
 .sfp-ci img{width:100%;height:100%;object-fit:cover;display:block}
-.sfp-sw{position:absolute;right:9px;bottom:9px;width:26px;height:26px;padding:0;border:0;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:13px;line-height:26px}
+.sfp-cap{position:absolute;left:0;right:0;bottom:0;padding:16px 8px 6px;font-style:normal;font-size:10.5px;text-align:center;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sfp-c.ci .sfp-cap{left:16%;right:16%;bottom:12%;padding:3px 6px;border-radius:8px;background:rgba(0,0,0,.45)}
+.sfp-sw{position:absolute;right:8px;bottom:8px;width:24px;height:24px;padding:0;border:0;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:12px;line-height:24px}
+.sfp-c.ci .sfp-sw{right:14%;bottom:14%}
+.sfp-acts2{display:flex;align-items:center;gap:14px;margin-top:16px}
 .sfv{position:absolute;inset:0;z-index:60;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);color:var(--tx);opacity:0;transform:scale(.96);transition:opacity .35s,transform .45s cubic-bezier(.22,1,.36,1);font-family:-apple-system,"PingFang SC","Noto Sans SC",sans-serif}
 .sfv.in{opacity:1;transform:none}.sfv *{box-sizing:border-box}
 .sfv-bg{position:absolute;inset:0;background:var(--panel);z-index:0}
 .sfv-top{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0}
 .sfv-x,.sfv-hr{width:38px;height:38px;padding:0;border-radius:50%;border:1px solid var(--cbd);background:var(--cbg);color:var(--ctx);font-size:17px}
 .sfv-hr.on{color:#ff5b6e}.sfv-cnt{font-size:13px;letter-spacing:.2em;color:var(--k)}
-.sfv-stage{position:relative;z-index:2;flex:0 0 46%;margin-top:6px;overflow:hidden;touch-action:none}
+.sfv-stage{position:relative;z-index:2;flex:0 0 42%;margin-top:6px;overflow:hidden;touch-action:none}
 .sfv-pg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;will-change:transform,opacity}
-.sfv-pg img{max-width:76%;max-height:92%;border-radius:16px;border:2px solid rgba(255,255,255,.4);box-shadow:0 14px 40px rgba(0,0,0,.35);-webkit-user-drag:none}
-.sfv-info{position:relative;z-index:2;flex:1 1 auto;min-height:0;overflow:auto;padding:16px 24px 4px;text-align:center}
+.sfv-pg img{width:auto;height:auto;max-width:72%;max-height:92%;aspect-ratio:1;object-fit:cover;border-radius:16px;border:2px solid rgba(255,255,255,.4);box-shadow:0 14px 40px rgba(0,0,0,.3);-webkit-user-drag:none}
+.sfv-pg.ci img{border-radius:50%}
+.sfv-info{position:relative;z-index:2;flex:1 1 auto;min-height:0;overflow:auto;padding:14px 26px 4px;text-align:center}
 .sfv-meta{display:flex;justify-content:space-between;font-size:10px;letter-spacing:5px;color:var(--k)}.sfv-meta em{font-style:normal;letter-spacing:.2em}
-.sfv-name{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px}
+.sfv-name{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px}
 .sfv-name b,.sfv-in{font:300 26px/1.2 "PingFang SC",sans-serif;letter-spacing:.14em;color:var(--big)}
 .sfv-in{width:60%;text-align:center;border:0;border-bottom:1px solid var(--cbd);background:transparent;outline:0;padding:0}
 .sfv-ed{border:0;background:none;color:var(--ctx);font-size:16px;padding:4px}
-.sfv-sub{margin:6px 0 0;font-size:12px;letter-spacing:.12em;color:var(--k)}
-.sfv-strip{position:relative;z-index:2;flex:0 0 auto;display:flex;align-items:center;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:12px 0 calc(16px + env(safe-area-inset-bottom));scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.sfv-desc{margin:8px 0 0;font-size:13.5px;line-height:1.7;color:var(--tx);min-height:22px}.sfv-desc.empty{color:var(--k);font-size:12px;letter-spacing:.1em}
+.sfv-ta{width:100%;margin-top:8px;padding:8px 10px;border-radius:12px;border:1px solid var(--cbd);background:var(--inp);color:var(--tx);font:13.5px/1.6 inherit;font-family:inherit;outline:0;resize:none}
+.sfv-sub{margin:6px 0 0;font-size:11.5px;letter-spacing:.12em;color:var(--k)}
+.sfv-more{display:flex;justify-content:center;gap:22px;margin-top:8px}
+.sfv-strip{position:relative;z-index:2;flex:0 0 auto;display:flex;align-items:center;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:10px 0 calc(14px + env(safe-area-inset-bottom));scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .sfv-strip::-webkit-scrollbar{display:none}
 .sfv-strip::before,.sfv-strip::after{content:"";flex:0 0 calc(50% - 38px)}
-.sfv-t{position:relative;flex:0 0 56px;height:56px;border-radius:10px;overflow:hidden;scroll-snap-align:center;border:1.5px solid var(--cbd)}
+.sfv-t{position:relative;flex:0 0 56px;height:56px;border-radius:12px;overflow:hidden;scroll-snap-align:center;border:1.5px solid var(--cbd)}.sfv-t.ci{border-radius:50%}
 .sfv-t img{width:100%;height:100%;object-fit:cover;display:block}.sfv-t u{position:absolute;right:3px;top:1px;font-size:10px;color:#ff5b6e;text-decoration:none}
 `);
   SF.cssChat.push([
     ".sfc-pc{width:200px;max-width:100%;border-radius:10px;overflow:hidden;border:2px solid #e9bd62;background:#f5e6c8;box-shadow:0 4px 14px rgba(120,10,20,.3)}",
+    ".sfc-pc.ci img{border-radius:50%}.sfc-pc em{display:block;padding:6px 10px;font-style:normal;font-size:12px;line-height:1.5;color:#7a2418}",
     ".sfc-pc img{display:block;width:100%}.sfc-pc span{display:block;padding:5px 10px;font:600 12px/1.4 serif;letter-spacing:.1em;color:#fff3dc;background:#a51a26;text-align:center}"
   ].join("\n"));
 })(window.__SF);
