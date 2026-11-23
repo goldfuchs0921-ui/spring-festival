@@ -24,7 +24,8 @@
   }
   async function sendTo(item) {
     var convs = []; try { convs = (await SF.roche.conversation.list()) || []; } catch (e) {}
-    var L = SF.layer(SF.appRoot, "发给谁", { k: "PAPERCUT" });
+    var L = SF.layer(SF.appRoot, "发给谁", { k: "PAPERCUT", key: "sendTo" });
+    if (!L) return;
     L.body.innerHTML = '<p class="tip">选一个聊天，窗花会作为卡片发过去（我发的，角色能读到一句描述）。</p>' + (convs.map(function (c, i) {
       return '<span class="sfchip" data-i="' + i + '">' + SF.esc(c.name || c.title || c.handle || "聊天") + "</span>";
     }).join("") || '<p class="tip">没有读取到聊天</p>');
@@ -45,7 +46,8 @@
 
   function askName(def) {
     return new Promise(function (res) {
-      var done = false, L = SF.layer(SF.appRoot, "给作品起个名字", { k: "PAPERCUT", onClose: function () { if (!done) { done = true; res(null); } } });
+      var done = false, L = SF.layer(SF.appRoot, "给作品起个名字", { k: "PAPERCUT", key: "pcName", onClose: function () { if (!done) { done = true; res(null); } } });
+      if (!L) { res(null); return; }
       L.body.innerHTML = '<input type="text" maxlength="12" placeholder="最多12个字" value="' + SF.esc(def) + '"><div class="sfrow" style="margin-top:14px;justify-content:center"><button class="sfb">保存</button></div>';
       var inp = L.body.querySelector("input");
       setTimeout(function () { inp.focus(); inp.select(); }, 320);
@@ -77,8 +79,10 @@
 
   // ---------- 查看页：大图左右滑动 + 底部缩略图条 ----------
   function viewer(items, start, onClose) {
+    if (SF._viewer && SF._viewer.parentNode) return; // 已经开着：不重复开
     var idx = Math.max(0, Math.min(start, items.length - 1)), busy = 0, closed = false;
     var V = SF.h("div", "sfv " + SF.themeCls());
+    V.style.zIndex = SF.zTop(); SF._viewer = V; // 盖在所有已打开的弹窗上面
     V.innerHTML = '<div class="sfv-bg"></div>' +
       '<div class="sfv-top"><button class="sfv-x" type="button">✕</button><span class="sfv-cnt"></span><button class="sfv-hr" type="button">♡</button></div>' +
       '<div class="sfv-stage"><div class="sfv-pg" data-s="p"><img draggable="false"></div><div class="sfv-pg" data-s="c"><img draggable="false"></div><div class="sfv-pg" data-s="n"><img draggable="false"></div></div>' +
@@ -194,6 +198,7 @@
 
     function closeV() {
       if (closed) return; closed = true;
+      if (SF._viewer === V) SF._viewer = null;
       V.style.transition = "transform .3s cubic-bezier(.5,0,.8,.4),opacity .3s"; V.style.transform = "translateY(" + V.clientHeight * 0.4 + "px) scale(.85)"; V.style.opacity = 0;
       setTimeout(function () { V.remove(); }, 320);
       if (onClose) onClose();
@@ -245,7 +250,8 @@
 
   // ---------- 作品墙：拼贴版式 ----------
   async function wall() {
-    var L = SF.layer(SF.appRoot, "作品墙", { full: true, k: "GALLERY" });
+    var L = SF.layer(SF.appRoot, "作品墙", { full: true, k: "GALLERY", key: "wall" });
+    if (!L) return;
     var items = await SF.st.get("cuts", []);
     var st = await SF.st.get("cut_wall", { tpl: 3, cells: {} });
     if (!st.cells) st.cells = {};
@@ -282,7 +288,8 @@
     }
     function pick(i) {
       if (!items.length) { SF.toast("还没有作品，先去剪一张"); return; }
-      var P = SF.layer(SF.appRoot, "选择窗花", { k: "GALLERY" });
+      var P = SF.layer(SF.appRoot, "选择窗花", { k: "GALLERY", key: "pcPick" });
+      if (!P) return;
       P.body.innerHTML = '<div class="sfp-wall">' + items.map(function (x, k) {
         return '<div class="sfp-it" data-k="' + k + '"><div class="sfp-th' + (x.shape === "ci" ? " ci" : "") + '"><img src="' + x.img + '" draggable="false"></div><small>' + SF.esc(x.name || "窗花") + "</small></div>";
       }).join("") + '</div><div class="sfrow" style="justify-content:center;margin-top:14px"><span class="sf-lnk" data-a="clr">清空这一格</span></div>';
@@ -313,7 +320,8 @@
         g.restore();
       }
       g.fillStyle = "rgba(150,40,30,.75)"; g.font = '30px "PingFang SC",sans-serif'; g.textAlign = "center"; g.fillText("新春窗花", Wd / 2, Ht - pad + 4);
-      var url = cv.toDataURL("image/jpeg", 0.92), P = SF.layer(SF.appRoot, "拼贴图", { k: "GALLERY" });
+      var url = cv.toDataURL("image/jpeg", 0.92), P = SF.layer(SF.appRoot, "拼贴图", { k: "GALLERY", key: "pcCollage" });
+      if (!P) return;
       P.body.innerHTML = '<div class="sfp-big"><img src="' + url + '"></div><button class="sfb block" style="margin-top:14px" type="button">导出 / 分享</button>';
       P.body.querySelector("button").onclick = function () { exportImg({ img: url }); };
     }

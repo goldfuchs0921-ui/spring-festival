@@ -57,7 +57,7 @@
   SF.app = {
     refreshScene: function () { loadScene(true); },
     mount: function (container, roche) {
-      SF.setRoche(roche);
+      SF.setRoche(roche, true);
       SF.injectCss("sf-css-app", SF.cssApp);
       SF.injectChatCss();
       var root = SF.h("div", "roche-plugin-spring-festival sf-root");
@@ -67,6 +67,7 @@
         '<div class="sf-top"><button class="sf-back" type="button" aria-label="返回">‹</button><div class="sf-cd"><small>距新春零点</small><b>--</b></div><button class="sf-snd" type="button" aria-label="音效"></button></div>';
       container.replaceChildren(root);
       SF.appRoot = root;
+      setTimeout(function () { SF.inbox.drain(); }, 700);
       var view = root.querySelector(".sf-view"), scene = root.querySelector(".sf-scene");
       S = { root: root, bg: scene.querySelector(".sf-bg"), period: null, prev: null };
 
@@ -159,7 +160,7 @@
 .sf-spot:active .sf-tag{transform:translate(-50%,-50%) scale(.93)}
 .sf-tagi{position:relative;display:flex;flex-direction:column;align-items:center;animation:sfFloat 4.2s ease-in-out infinite;animation-delay:calc(var(--d,0) * -1s)}
 .sf-tagi::before{content:"";position:absolute;inset:-1.1em -2em;background:radial-gradient(closest-side,rgba(18,8,22,.66),rgba(18,8,22,0));pointer-events:none;z-index:-1}
-.sf-en{position:absolute;left:50%;top:50%;transform:translate(-50%,-56%);z-index:0;white-space:nowrap;pointer-events:none;font:italic 700 1.7em/1 Georgia,"Times New Roman","Songti SC",serif;letter-spacing:.01em;color:rgba(255,255,255,.4);text-shadow:0 0 .5em rgba(20,8,12,.4)}
+.sf-en{position:absolute;left:-.95em;top:-1em;z-index:0;white-space:nowrap;pointer-events:none;font:italic 700 1.05em/1 Georgia,"Times New Roman","Songti SC",serif;letter-spacing:-.03em;color:rgba(255,255,255,.42);text-shadow:0 0 .5em rgba(20,8,12,.4)}
 .sf-cn{position:relative;z-index:2;white-space:nowrap;font:600 1em/1 "Songti SC","STSong","Noto Serif SC","Source Han Serif SC",serif;letter-spacing:.2em;margin-right:-.2em;color:#fff;text-shadow:0 0 .55em rgba(255,60,70,.9),0 0 .12em rgba(255,90,90,.7),0 1px 3px rgba(0,0,0,.6)}
 .sf-cap{position:relative;z-index:1;display:block;width:calc(100% + .9em);height:.3em;margin-top:.22em;border-radius:999px;background:#fff;box-shadow:0 0 .7em rgba(255,255,255,.75);animation:sfCap 3s ease-in-out infinite}
 .sf-silk{position:absolute;left:50%;top:50%;width:calc(100% + 2.6em);height:1.9em;transform:translate(-50%,-66%);pointer-events:none;overflow:visible;animation:sfWob 6s ease-in-out infinite alternate}

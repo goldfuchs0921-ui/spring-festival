@@ -12,10 +12,10 @@
     var base = "我给你发了一个新春红包" + amt + "，里面写着：「" + cd.blessing + "」";
     return cd.status === "opened" ? base + "（你已经拆开了）" : base;
   }
-  async function getPool(id) { return await SF.st.get("rp_pool_" + id, []); }
+  async function getPool(id) { return await SF.ls.get("rp_pool_" + id, []); }
   async function addRecord(r) {
-    var a = await SF.st.get("rp_records", []); a.unshift(r); if (a.length > 60) a.length = 60;
-    await SF.st.set("rp_records", a);
+    var a = await SF.ls.get("rp_records", []); a.unshift(r); if (a.length > 60) a.length = 60;
+    await SF.ls.set("rp_records", a);
   }
   async function aiBless(char) {
     var me = await SF.userName();
@@ -160,7 +160,8 @@
       var st = { dir: "ta2me", src: "preset", text: "", amount: "", pool: [],
         cid: isGroup ? null : ((conv && conv.contactId) || ctx.contactId || (ctx.contact && ctx.contact.id) || null) };
       if (!isGroup && !st.cid) { SF.toast("没有找到这个聊天的角色"); return; }
-      var L = SF.layer(document.body, "新春红包", { fixed: true, k: "RED PACKET" });
+      var L = SF.layer(document.body, "新春红包", { fixed: true, k: "RED PACKET", key: "rpSheet" });
+      if (!L) return;
 
       async function render() {
         st.pool = st.cid ? await getPool(st.cid) : [];
@@ -209,7 +210,7 @@
             if (!blessing) { SF.toast("先写一句祝福"); btn.disabled = false; return; }
           } else if (st.src === "pool") {
             var pool = await getPool(st.cid);
-            if (pool.length) { var i = Math.floor(Math.random() * pool.length); blessing = pool.splice(i, 1)[0]; await SF.st.set("rp_pool_" + st.cid, pool); }
+            if (pool.length) { var i = Math.floor(Math.random() * pool.length); blessing = pool.splice(i, 1)[0]; await SF.ls.set("rp_pool_" + st.cid, pool); }
             else blessing = SF.pick(SF.data.rp);
           } else if (st.src === "ai") {
             if (!(await SF.confirm("调用 AI", "让「" + name + "」现写一句祝福，会消耗 1 次 AI。继续吗？"))) { btn.disabled = false; return; }
@@ -237,7 +238,7 @@
       async function render() {
         var h = '<div class="sf-seg"><span data-t="rec" class="' + (tab === "rec" ? "on" : "") + '">红包记录</span><span data-t="pool" class="' + (tab === "pool" ? "on" : "") + '">祝福池</span></div>';
         if (tab === "rec") {
-          var a = await SF.st.get("rp_records", []);
+          var a = await SF.ls.get("rp_records", []);
           h += "<h4>最近</h4>" + (a.length ? '<div class="sf-card">' + a.map(function (x) {
             var lab = x.dir === "ta2me" ? SF.esc(x.who) + " → 我" : x.dir === "me2ta" ? "我 → " + SF.esc(x.who) : "拆开了 " + SF.esc(x.who) + " 的红包";
             return '<div class="sfr-i"><div><small>' + fmt(x.t) + "　" + lab + (x.amount != null ? " · ¥" + fmtAmt(x.amount) : "") + "</small><p>" + SF.esc(x.blessing || "") + "</p></div></div>";
@@ -256,13 +257,13 @@
         var a = e.target.closest("[data-t],[data-c],[data-a],[data-x]"); if (!a) return;
         if (a.dataset.t) { tab = a.dataset.t; }
         else if (a.dataset.c) { cid = a.dataset.c; }
-        else if (a.dataset.x != null) { var p = await getPool(cid); p.splice(+a.dataset.x, 1); await SF.st.set("rp_pool_" + cid, p); }
-        else if (a.dataset.a === "clr") { await SF.st.set("rp_pool_" + cid, []); }
+        else if (a.dataset.x != null) { var p = await getPool(cid); p.splice(+a.dataset.x, 1); await SF.ls.set("rp_pool_" + cid, p); }
+        else if (a.dataset.a === "clr") { await SF.ls.set("rp_pool_" + cid, []); }
         else if (a.dataset.a === "gen") {
           var char = chars.filter(function (c) { return c.id === cid; })[0];
           if (!(await SF.confirm("调用 AI", "让「" + SF.cname(char) + "」一次写 12 句红包祝福，会消耗 1 次 AI。继续吗？"))) return;
           a.disabled = true; a.textContent = "攒祝福中…";
-          try { var add = await genPool(char); var old = await getPool(cid); await SF.st.set("rp_pool_" + cid, old.concat(add).slice(-40)); SF.toast("已加入 " + add.length + " 句"); }
+          try { var add = await genPool(char); var old = await getPool(cid); await SF.ls.set("rp_pool_" + cid, old.concat(add).slice(-40)); SF.toast("已加入 " + add.length + " 句"); }
           catch (err) { SF.toast("失败：" + (err.message || err)); }
         }
         render();

@@ -14,8 +14,8 @@
 
   async function load() {
     var s = await SF.st.get("fortune", null);
-    if (!s) s = { cards: {}, day: "", done: {}, dup: 0, total: 0, gift: null };
-    s.cards = s.cards || {}; s.done = s.done || {};
+    if (!s) s = { cards: {}, day: "", done: {}, once: {}, round: 1, dup: 0, total: 0, gift: null, history: [] };
+    s.cards = s.cards || {}; s.done = s.done || {}; s.once = s.once || {}; s.round = s.round || 1; s.history = s.history || [];
     var d = SF.today();
     if (s.day !== d) { s.day = d; s.done = {}; }
     return s;
@@ -38,10 +38,14 @@
     o.onclick = function () { o.remove(); };
     setTimeout(function () { if (o.parentNode) o.remove(); }, 2600);
   }
+  function got5(s) { return TYPES.every(function (t) { return s.cards[t.k] > 0; }); }
   async function doAward(task, force) {
     var s = await load();
-    if (!force && s.done[task]) return null;
-    if (task) s.done[task] = 1;
+    if (!force) {
+      if (got5(s)) return null; // 这一轮已经集齐，不再发卡
+      if (task === "sign") { if (s.done.sign) return null; s.done.sign = 1; }
+      else if (task) { if (s.once[task]) return null; s.once[task] = 1; } // 除签到外，每个任务只有第一次给福卡
+    }
     var t = drawOne(s);
     await SF.st.set("fortune", s);
     popup(t);
@@ -50,7 +54,8 @@
   }
 
   async function giftFlow(s) {
-    var L = SF.layer(SF.appRoot, "新年大礼", { k: "BLESSINGS" });
+    var L = SF.layer(SF.appRoot, "新年大礼", { k: "BLESSINGS", key: "gift" });
+    if (!L) return;
     L.body.innerHTML = '<p class="tip">五福集齐啦。选一种方式领取新年大礼：预设不花额度；让角色亲自写会调用一次 AI。</p><div class="sff-gsrc"></div><div class="sff-gch"></div><div class="sfrow" style="margin-top:12px"><button class="sfb" data-a="go">领取</button></div>';
     var src = "preset", cid = null, chars = await SF.chars();
     var box = L.body.querySelector(".sff-gsrc"), chb = L.body.querySelector(".sff-gch");
@@ -86,29 +91,37 @@
     });
   }
   function showGift(g) {
-    var L = SF.layer(SF.appRoot, "新年大礼", { k: "BLESSINGS" });
+    var L = SF.layer(SF.appRoot, "新年大礼", { k: "BLESSINGS", key: "gift" });
+    if (!L) return;
     L.body.innerHTML = '<div class="sff-letter"><p>' + SF.esc(g.text) + '</p><em>—— ' + SF.esc(g.who) + "</em></div>";
   }
 
   SF.fortune = {
-    award: function (task, force) { chain = chain.then(function () { return doAward(task, force); }).catch(function (e) { console.error(e); }); return chain; },
+    award: function (task, force) {
+      if (!SF.appRoot && !force) { SF.inbox.push(task); return Promise.resolve(null); } // 在聊天里完成的：先放进信箱
+      chain = chain.then(function () { return doAward(task, force); }).catch(function (e) { console.error(e); }); return chain;
+    },
     load: load,
     open: async function () {
       var L = SF.layer(SF.appRoot, "集五福", { full: true, k: "BLESSINGS", onClose: function () { view = null; } });
       async function render() {
-        var s = await load(), got = TYPES.filter(function (t) { return s.cards[t.k] > 0; }).length;
-        var done = TASKS.filter(function (t) { return s.done[t.k]; }).length;
-        var h = '<div class="sff-hero"><b>' + got + "<span>/5</span></b><small>已集福卡　·　今日福气 " + done + "/" + TASKS.length + "</small></div>" + '<div class="sff-grid">' + TYPES.map(function (t) {
+        var s = await load(), got = TYPES.filter(function (t) { return s.cards[t.k] > 0; }).length, full = got === 5;
+        var h = '<div class="sff-hero"><b>' + got + "<span>/5</span></b><small>第 " + s.round + " 轮　·　" + (full ? (s.gift ? "已领取大礼" : "已集齐") : "已集福卡") + "</small></div>" + '<div class="sff-grid">' + TYPES.map(function (t) {
           var n = s.cards[t.k] || 0;
           return '<div class="sff-c' + (n ? "" : " off") + '"><b>' + t.ch + "</b>" + (n > 1 ? "<i>×" + n + "</i>" : "") + "</div>";
         }).join("") + "</div>";
-        h += '<p class="tip" style="margin-top:12px">每个任务每天一次，各抽一张福卡，福卡可能重复。</p>';
-        h += "<h4>今日福气</h4>" + '<div class="sf-card">' + TASKS.map(function (t) {
-          var ok = s.done[t.k];
-          return '<div class="sff-t' + (ok ? " ok" : "") + '"><div><b>' + t.t + "</b><small>" + t.d + "</small></div>" +
-            (ok ? "<span>已完成</span>" : t.k === "sign" ? '<button class="sfb sm" data-a="sign">签到</button>' : "<span>去完成</span>") + "</div>";
-        }).join("") + "</div>";
-        if (got === 5) h += '<button class="sfb block" style="margin-top:18px" data-a="gift" type="button">' + (s.gift ? "再看看新年大礼" : "领取新年大礼") + "</button>";
+        if (full) {
+          h += '<p class="tip" style="margin-top:12px">' + (s.gift ? "这一轮的福气都在这里了。" : "五福集齐，去领取你的新年大礼吧。") + "</p>";
+          h += '<button class="sfb block" style="margin-top:14px" data-a="gift" type="button">' + (s.gift ? "再看看新年大礼" : "领取新年大礼") + "</button>";
+          if (s.gift) h += '<div style="text-align:center;margin-top:14px"><span class="sf-lnk" data-a="again">再集一轮</span></div>';
+        } else {
+          h += '<p class="tip" style="margin-top:12px">签到每天一张；其他任务只有第一次完成才给福卡。福卡可能重复。</p>';
+          h += "<h4>福气任务</h4>" + '<div class="sf-card">' + TASKS.map(function (t) {
+            var ok = t.k === "sign" ? s.done.sign : s.once[t.k];
+            return '<div class="sff-t' + (ok ? " ok" : "") + '"><div><b>' + t.t + "</b><small>" + t.d + (t.k === "sign" ? "（每天）" : "（仅首次）") + "</small></div>" +
+              (ok ? "<span>已完成</span>" : t.k === "sign" ? '<button class="sfb sm" data-a="sign" type="button">签到</button>' : "<span>去完成</span>") + "</div>";
+          }).join("") + "</div>";
+        }
         L.body.innerHTML = h;
       }
       view = render;
@@ -116,12 +129,19 @@
         var a = e.target.closest("[data-a]"); if (!a) return;
         if (a.dataset.a === "sign") await SF.fortune.award("sign");
         else if (a.dataset.a === "gift") { var s = await load(); if (s.gift) showGift(s.gift); else giftFlow(s); }
+        else if (a.dataset.a === "again") {
+          if (!(await SF.confirm("再集一轮", "福卡会清零，重新攒一轮，集齐后可以再领一份新的大礼。首次任务不会再给福卡，之后靠每天签到。继续吗？"))) return;
+          var s2 = await load(); if (s2.gift) s2.history.push(s2.gift);
+          s2.round += 1; s2.cards = {}; s2.dup = 0; s2.gift = null;
+          await SF.st.set("fortune", s2); render();
+        }
       });
       render();
     },
     // 测试面板用
     testFill: async function () { var s = await load(); TYPES.forEach(function (t) { s.cards[t.k] = Math.max(1, s.cards[t.k] || 0); }); await SF.st.set("fortune", s); if (view) view(); },
     testReset: async function () { await SF.st.del("fortune"); if (view) view(); },
+    testOnce: async function () { var s = await load(); s.once = {}; await SF.st.set("fortune", s); if (view) view(); },
     testDay: async function () { var s = await load(); s.done = {}; await SF.st.set("fortune", s); if (view) view(); },
     testExtra: function () { return SF.fortune.award(null, true); }
   };

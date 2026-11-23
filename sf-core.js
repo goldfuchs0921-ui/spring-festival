@@ -9,7 +9,7 @@
   SF.TARGET = new Date(2027, 1, 6, 0, 0, 0).getTime(); // 2027 春节零点（本机时间）
 
   SF.now = function () { return Date.now() + SF.offset; };
-  SF.setRoche = function (r) { if (r) SF.roche = r; };
+  SF.setRoche = function (r, isApp) { if (r) { SF.roche = r; if (isApp) SF.appRoche = r; } };
   SF.h = function (tag, cls, html) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -46,15 +46,33 @@
   // ---------- 插件私有存储（出错不抛）----------
   SF.st = {
     get: async function (k, d) {
-      try { var v = await SF.roche.storage.get(k); return v == null ? d : v; } catch (e) { return d; }
+      try { var v = await (SF.appRoche || SF.roche).storage.get(k); return v == null ? d : v; } catch (e) { return d; }
     },
     set: async function (k, v) {
-      try { await SF.roche.storage.set(k, v); return true; } catch (e) { console.error(e); return false; }
+      try { await (SF.appRoche || SF.roche).storage.set(k, v); return true; } catch (e) { console.error(e); return false; }
     },
     del: async function (k) {
-      try { await SF.roche.storage.delete(k); return true; } catch (e) { return false; }
+      try { await (SF.appRoche || SF.roche).storage.delete(k); return true; } catch (e) { return false; }
     }
   };
+
+  // ---------- 聊天里和 App 里都能读写的共享存储（浏览器 localStorage）----------
+  SF.ls = {
+    get: function (k, d) { try { var v = localStorage.getItem("sf:" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set: function (k, v) { try { localStorage.setItem("sf:" + k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+    del: function (k) { try { localStorage.removeItem("sf:" + k); } catch (e) {} }
+  };
+  // 聊天里完成的福卡任务先放进“信箱”，App 打开时再收进福卡
+  SF.inbox = {
+    push: function (t) { var a = SF.ls.get("inbox", []); a.push({ t: t, at: Date.now() }); SF.ls.set("inbox", a.slice(-50)); },
+    drain: function () {
+      var a = SF.ls.get("inbox", []); if (!a.length) return;
+      SF.ls.set("inbox", []);
+      a.forEach(function (e) { if (SF.fortune) SF.fortune.award(e.t); });
+    }
+  };
+  SF.z = 50;
+  SF.zTop = function () { return ++SF.z; };
 
   // ---------- 角色 / 用户 / AI / 语音 ----------
   SF.cname = function (c) { return (c && (c.handle || c.name)) || "角色"; };
@@ -155,6 +173,8 @@
   // opts: full(整页) half(半屏，不挡天空) fixed(挂在 body 上) k(英文小标题) onClose
   SF.layer = function (parent, title, opts) {
     opts = opts || {};
+    SF._lk = SF._lk || {};
+    if (opts.key && SF._lk[opts.key] && SF._lk[opts.key].alive) return null; // 同一个弹窗已经开着：不重复开
     var w = SF.h("div", "sfl " + SF.themeCls() + (opts.full ? " sfl-full" : "") + (opts.half ? " sfl-half" : "") + (opts.fixed ? " sfl-fixed" : ""));
     var fx = "";
     for (var i = 0; i < 14; i++) fx += '<i style="left:' + (Math.random() * 100).toFixed(1) + "%;animation-duration:" + (4 + Math.random() * 5).toFixed(1) + "s;animation-delay:-" + (Math.random() * 6).toFixed(1) + "s;opacity:" + (0.25 + Math.random() * 0.5).toFixed(2) + '"></i>';
@@ -163,6 +183,7 @@
     w.querySelector("b").textContent = title;
     w.querySelector(".sfl-k").textContent = opts.k || "";
     parent.appendChild(w);
+    if (!opts.fixed) w.style.zIndex = SF.zTop(); // 后打开的永远盖在上面
     var panel = w.querySelector(".sfl-panel"), mask = w.querySelector(".sfl-mask"), closed = false, under = !opts.half && !opts.fixed;
     if (under) { parent._sfl = (parent._sfl || 0) + 1; parent.classList.add("sfl-open"); }
     var L = {
@@ -178,6 +199,7 @@
       },
       setTitle: function (t) { w.querySelector("b").textContent = t; }
     };
+    if (opts.key) SF._lk[opts.key] = L;
     w.querySelector(".sfl-x").onclick = function () { L.close(); };
     mask.onclick = function () { L.close(); };
 
