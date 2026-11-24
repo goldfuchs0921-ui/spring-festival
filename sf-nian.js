@@ -84,11 +84,11 @@
     g.translate(ox, bob); g.rotate(rot); g.scale(1, sy);
 
     function hand(x, y) {
-      g.fillStyle = "#f2b04a"; g.beginPath(); g.arc(x, y, 11, 0, 7); g.fill();
-      g.fillStyle = "#fff3d0"; for (var i = -1; i <= 1; i++) { g.beginPath(); g.arc(x + i * 6, y - 10, 2.4, 0, 7); g.fill(); }
+      g.fillStyle = "#f2b04a"; g.beginPath(); g.arc(x, y, 16, 0, 7); g.fill();
+      g.fillStyle = "#fff3d0"; for (var i = -1; i <= 1; i++) { g.beginPath(); g.arc(x + i * 8, y - 14, 3.2, 0, 7); g.fill(); }
     }
     function arm(x0, y0, x1, y1) {
-      g.strokeStyle = "#c93a26"; g.lineWidth = 20; g.lineCap = "round";
+      g.strokeStyle = "#c93a26"; g.lineWidth = 32; g.lineCap = "round";
       g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo((x0 + x1) / 2, (y0 + y1) / 2 + 10, x1, y1); g.stroke(); hand(x1, y1);
     }
     // 脚
@@ -307,7 +307,7 @@
     function resume() { if (!me.paused) return; SF.sfx.resume(); me.paused = false; ov.classList.remove("paused"); }
     function quit() { cleanup(); if (onClose) onClose(); }
     function cleanup() {
-      me.stop = true; cancelAnimationFrame(me.raf); clearInterval(me.sch); if (SF.sfx) SF.sfx.resume();
+      me.stop = true; cancelAnimationFrame(me.raf); clearInterval(me.sch); if (SF.sfx) { SF.sfx.resume(); if (SF.sfx.hush) SF.sfx.hush(); }
       window.removeEventListener("resize", onRs); document.removeEventListener("visibilitychange", onVis);
       if (ov.parentNode) ov.remove(); G = null;
     }
@@ -330,9 +330,8 @@
       }
     }
     function jfx(x, y, kind, label) {
-      x = clamp(x, 60, me.W - 60);
       me.rings.push({ x: x, y: y, kind: kind, age: 0 });
-      me.judges.push({ x: x, y: y, kind: kind, label: label || (kind === "perfect" ? "精准" : kind === "good" ? "不错" : "漏"), age: 0 });
+      me.judges = [{ kind: kind, label: label || (kind === "perfect" ? "精准" : kind === "good" ? "不错" : "漏"), age: 0 }];
     }
     function geomBase(n) { var L = me.L; return { sx: L.W * n.sxf, sy: L.H * 0.86, tx: L.cx + n.ex * L.rx, ty: L.cy + L.by + n.ey * L.ry }; }
     function geomAt(n, t) {
@@ -525,44 +524,52 @@
 
     // ----- 绘制 -----
     var JC = { perfect: ["#fff8d0", "#ffd23f", "#ff8f1f", "#ffcf5a"], good: ["#f0faff", "#79ccff", "#2f7bff", "#7cb8ff"], miss: ["#ffe0e6", "#ff8aa0", "#c23a5a", "#ff9aae"] };
-    function drawRing(x, y, a, t) {
-      var r = 33 + 2 * Math.sin(t * 0.012);
-      g.save(); g.globalAlpha = a;
-      g.strokeStyle = "rgba(25,8,35,.8)"; g.lineWidth = 9; g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke();
-      g.strokeStyle = "#ffd23f"; g.lineWidth = 4; g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke();
-      g.strokeStyle = "rgba(25,8,35,.65)"; g.lineWidth = 4; g.beginPath(); g.arc(x, y, r - 11, 0, 7); g.stroke();
-      g.strokeStyle = "#fff6c8"; g.lineWidth = 1.6; g.beginPath(); g.arc(x, y, r - 11, 0, 7); g.stroke();
-      g.fillStyle = "#ffd23f";
-      for (var i = 0; i < 4; i++) { var an = i * 1.5708 + 0.785; g.beginPath(); g.arc(x + Math.cos(an) * (r + 8), y + Math.sin(an) * (r + 8), 2.2, 0, 7); g.fill(); }
+    // 判定圈：内圈固定、小而淡；最近的一个爆竹临近时，外圈收缩到内圈上，内圈随之变亮
+    function drawRing(x, y, a, t, n) {
+      var q = clamp((t - (n.t - 700)) / 700, 0, 1), r0 = 24, hot = q >= 0.97;
+      g.save();
+      g.globalAlpha = a * (0.4 + 0.6 * q);
+      g.strokeStyle = "rgba(25,8,35,.35)"; g.lineWidth = 4.5; g.beginPath(); g.arc(x, y, r0, 0, 7); g.stroke();
+      g.strokeStyle = hot ? "#fff3b0" : "#ffd23f"; g.lineWidth = hot ? 3.4 : 2.2; g.beginPath(); g.arc(x, y, r0, 0, 7); g.stroke();
+      g.globalAlpha = a * (0.06 + 0.2 * q); g.fillStyle = "#ffd23f"; g.beginPath(); g.arc(x, y, r0, 0, 7); g.fill();
+      if (q < 1 && a > 0.9) {
+        g.globalAlpha = 0.85 * (1 - 0.3 * q); g.strokeStyle = "#fff6d0"; g.lineWidth = 1.8;
+        g.beginPath(); g.arc(x, y, r0 + 42 * (1 - q), 0, 7); g.stroke();
+      }
       g.restore();
     }
     function drawRingFx() {
       me.rings.forEach(function (r) {
         var k = r.age / 0.45, col = r.kind === "perfect" ? "#ffd23f" : r.kind === "good" ? "#5ab4ff" : "#b8bccc";
         g.save(); g.globalAlpha = 1 - k;
-        if (r.kind === "miss") { g.setLineDash([6, 6]); g.lineWidth = 3; g.strokeStyle = col; g.beginPath(); g.arc(r.x, r.y, 33 - 8 * k, 0, 7); g.stroke(); }
+        if (r.kind === "miss") { g.setLineDash([5, 5]); g.lineWidth = 2.5; g.strokeStyle = col; g.beginPath(); g.arc(r.x, r.y, 24 - 6 * k, 0, 7); g.stroke(); }
         else {
-          g.strokeStyle = col; g.lineWidth = 6 * (1 - k) + 1; g.beginPath(); g.arc(r.x, r.y, 33 + 34 * k, 0, 7); g.stroke();
-          g.globalAlpha = 0.35 * (1 - k); g.fillStyle = col; g.beginPath(); g.arc(r.x, r.y, 33, 0, 7); g.fill();
+          g.strokeStyle = col; g.lineWidth = 4 * (1 - k) + 1; g.beginPath(); g.arc(r.x, r.y, 24 + 26 * k, 0, 7); g.stroke();
+          g.globalAlpha = 0.3 * (1 - k); g.fillStyle = col; g.beginPath(); g.arc(r.x, r.y, 24, 0, 7); g.fill();
         }
         g.restore();
       });
     }
-    // 判定文字：渐变填充 + 深色描边 + 外发光，弹出后淡出
+    // 判定文字：固定显示在年兽脚下和战鼓之间的空地，只显示最新一个；渐变 + 细描边 + 柔光
     function drawJudges() {
+      var L = me.L;
       me.judges.forEach(function (j) {
-        var k = j.age / 0.6, pop = k < 0.2 ? 0.6 + 0.65 * (k / 0.2) : k < 0.35 ? 1.25 - 0.25 * ((k - 0.2) / 0.15) : 1;
-        var al = k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45, c = JC[j.kind], size = 40;
-        g.save(); g.globalAlpha = clamp(al, 0, 1); g.translate(j.x, j.y + 52 - k * 10); g.scale(pop, pop);
-        g.font = "italic 800 " + size + 'px "PingFang SC","Noto Sans SC",sans-serif'; g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round";
-        var gr = g.createLinearGradient(0, -size / 2, 0, size / 2);
-        gr.addColorStop(0, c[0]); gr.addColorStop(0.45, c[1]); gr.addColorStop(0.55, c[2]); gr.addColorStop(1, c[3]);
-        g.shadowColor = c[1]; g.shadowBlur = 16; g.strokeStyle = "rgba(25,8,35,.85)"; g.lineWidth = 7; g.strokeText(j.label, 0, 0);
-        g.shadowBlur = 0; g.fillStyle = gr; g.fillText(j.label, 0, 0);
-        g.lineWidth = 1.2; g.strokeStyle = "rgba(255,255,255,.55)"; g.strokeText(j.label, 0, 0);
+        var k = j.age / 0.6, pop = k < 0.18 ? 0.7 + 0.45 * (k / 0.18) : k < 0.32 ? 1.15 - 0.15 * ((k - 0.18) / 0.14) : 1;
+        var al = k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45, c = JC[j.kind], size = 34, chars = Array.from(j.label), adv = size * 1.12;
+        g.save(); g.globalAlpha = clamp(al, 0, 1); g.translate(L.cx, L.H * 0.7 - k * 8); g.scale(pop, pop);
+        g.font = "800 " + size + 'px "PingFang SC","Noto Sans SC",sans-serif'; g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round";
+        var gr = g.createLinearGradient(0, -size * 0.55, 0, size * 0.55);
+        gr.addColorStop(0, c[0]); gr.addColorStop(0.5, c[1]); gr.addColorStop(1, c[2]);
+        var x0 = -adv * (chars.length - 1) / 2;
+        chars.forEach(function (ch, i) {
+          var x = x0 + i * adv;
+          g.shadowColor = c[1]; g.shadowBlur = 12; g.strokeStyle = "rgba(25,8,35,.8)"; g.lineWidth = 5; g.strokeText(ch, x, 0);
+          g.shadowBlur = 0; g.fillStyle = gr; g.fillText(ch, x, 0);
+        });
         g.restore();
       });
     }
+
     function drawBg(t) {
       var L = me.L, bgr = g.createLinearGradient(0, 0, 0, L.H); bgr.addColorStop(0, "#0d1130"); bgr.addColorStop(0.55, "#3b1d3e"); bgr.addColorStop(1, "#7a2230");
       g.fillStyle = bgr; g.fillRect(0, 0, L.W, L.H);
@@ -644,11 +651,13 @@
       if (nrot) g.restore();
       if (me.inter && !me.inter.gotNian) { g.globalAlpha = 0.6 + 0.4 * Math.sin(tt * 6); emoji(g, "✨", L.cx + 70 * L.s, L.cy - 130 * L.s, 22, 0); g.globalAlpha = 1; }
       // 目标光点 + 爆竹
+      var upc = me.notes.filter(function (n) { return n.state === 0 && t >= n.t - D.fly * 1000 && n.t >= t - D.ow; }).sort(function (a, b) { return a.t - b.t; });
+      me.notes.forEach(function (n) { n._rk = 99; }); upc.forEach(function (n, i) { n._rk = i; });
       if (!me.end) me.notes.forEach(function (n) {
         if (n.state === 2 || n.state === 3 || t < 0) return;
         var gm = geomAt(n, t); if (!gm) return;
         var a = clamp((gm.p - 0.15) / 0.5, 0, 1);
-        if (n.state === 0) drawRing(gm.tx, gm.ty, 0.3 + 0.7 * a, t);
+        if (n.state === 0 && n._rk < 3) drawRing(gm.tx, gm.ty, n._rk === 0 ? 1 : n._rk === 1 ? 0.5 : 0.3, t, n);
         drawNote(g, n, gm.x, gm.y, gm.sc * (n.state === 1 ? 1.15 : 1), t);
       });
       drawRingFx();
@@ -727,8 +736,8 @@
   // ---------- 节拍校准：跟着“嗒”声点 12 拍，取中位数当作这台手机的延迟 ----------
   function calibrate(onDone) {
     if (SF.sfx && !SF.sfx.enabled()) { SF.toast("请先打开音效再校准"); return; }
-    var timers = [], clicks = [], taps = [], state = "idle";
-    var C = SF.layer(SF.appRoot, "节拍校准", { k: "CALIBRATION", key: "nianCal", onClose: function () { timers.forEach(clearTimeout); state = "done"; } });
+    var timers = [], clicks = [], taps = [], state = "idle", iv = 0;
+    var C = SF.layer(SF.appRoot, "节拍校准", { k: "CALIBRATION", key: "nianCal", onClose: function () { timers.forEach(clearTimeout); clearInterval(iv); state = "done"; if (SF.sfx.hush) SF.sfx.hush(); } });
     if (!C) return;
     C.body.innerHTML = '<p class="tip">跟着节拍，在听到“嗒”声的同时点击圆形按钮，共 12 拍。建议在安静的地方进行。</p>' +
       '<div class="sfn-cal"><button class="sfn-pad" type="button">开始</button></div><p class="sfn-cs">准备好后点“开始”</p><div class="sfn-cres"></div>';
@@ -755,9 +764,16 @@
       if (base == null) { cs.textContent = "音频准备中，请再点一次"; return; }
       state = "run"; clicks = []; taps = []; pad.textContent = "点！"; res.innerHTML = "";
       for (var i = 0; i < 12; i++) {
-        var w = base + 0.9 + i * 0.7; clicks.push(w); SF.sfx.sched.click(w);
+        clicks.push(base + 0.9 + i * 0.7);
         (function (k) { timers.push(setTimeout(function () { cs.textContent = "第 " + (k + 1) + " / 12 拍"; }, (0.9 + k * 0.7) * 1000)); })(i);
       }
+      // 不一次排完：只排接下来 0.12 秒内的，中途退出就不会再响
+      var nextClick = 0; clearInterval(iv);
+      iv = setInterval(function () {
+        var now = SF.sfx.raw();
+        while (nextClick < clicks.length && clicks[nextClick] < now + 0.12) { SF.sfx.sched.click(clicks[nextClick]); nextClick++; }
+        if (nextClick >= clicks.length) clearInterval(iv);
+      }, 30);
       timers.push(setTimeout(finish, (0.9 + 12 * 0.7 + 0.5) * 1000));
     }
     pad.addEventListener("pointerdown", function (e) {

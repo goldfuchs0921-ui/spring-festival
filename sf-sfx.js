@@ -98,6 +98,12 @@
     save: function () { if (ready()) notes([659, 880, 1175], 0.1, 0.13, 0.5); },
     tap: function () { if (ready()) tone(700, ctx.currentTime, 0.07, "sine", 0.07, 520); },
     // ---- 打年兽用：鼓组（按声卡时钟提前排好，节拍才稳）----
+    // 立刻把声音压掉（退出游戏/校准时用），0.35 秒后恢复音量
+    hush: function () {
+      if (!ctx || !master) return; var t = ctx.currentTime;
+      master.gain.cancelScheduledValues(t); master.gain.setValueAtTime(master.gain.value, t);
+      master.gain.linearRampToValueAtTime(0, t + 0.04); master.gain.setValueAtTime(0.5, t + 0.35);
+    },
     now: function () { if (!ctx) getCtx(); return ctx && ctx.state === "running" ? ctx.currentTime : null; },
     raw: function () { return ctx ? ctx.currentTime : 0; },
     suspend: function () { if (ctx && ctx.state === "running") ctx.suspend(); },

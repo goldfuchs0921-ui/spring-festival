@@ -4,7 +4,7 @@
 (function () {
   "use strict";
   var BASE = "https://raw.githubusercontent.com/goldfuchs0921-ui/spring-festival/main/";
-  var VER = "1.5.1";
+  var VER = "1.5.2";
   var MODULES = [
     "sf-data.js", "sf-core.js", "sf-sfx.js", "sf-fireworks.js", "sf-fortune.js",
     "sf-redpacket.js", "sf-papercut.js", "sf-couplets.js", "sf-riddle.js", "sf-nian.js", "sf-watch.js", "sf-test.js", "sf-app.js"
