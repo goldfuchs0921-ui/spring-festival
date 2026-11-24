@@ -4,10 +4,10 @@
 (function () {
   "use strict";
   var BASE = "https://raw.githubusercontent.com/goldfuchs0921-ui/spring-festival/main/";
-  var VER = "1.4.0";
+  var VER = "1.5.0";
   var MODULES = [
     "sf-data.js", "sf-core.js", "sf-sfx.js", "sf-fireworks.js", "sf-fortune.js",
-    "sf-redpacket.js", "sf-papercut.js", "sf-watch.js", "sf-test.js", "sf-app.js"
+    "sf-redpacket.js", "sf-papercut.js", "sf-couplets.js", "sf-riddle.js", "sf-nian.js", "sf-watch.js", "sf-test.js", "sf-app.js"
   ];
 
   var SF = (window.__SF = { BASE: BASE, VER: VER, loadError: null });
@@ -79,6 +79,21 @@
         {
           id: "paper-cut", name: "新春窗花",
           mount: function (c, m, r) { c.textContent = ""; ready.then(function () { if (SF.pc) SF.pc.mountCard(c, m, r); }); },
+          unmount: function () {}
+        },
+        {
+          id: "couplet", name: "新春对联",
+          mount: function (c, m, r) { c.textContent = ""; ready.then(function () { if (SF.cp) SF.cp.mountCard(c, m, r); }); },
+          unmount: function () {}
+        },
+        {
+          id: "riddle-card", name: "灯谜",
+          mount: function (c, m, r) { c.textContent = ""; ready.then(function () { if (SF.rd) SF.rd.mountCard(c, m, r); }); },
+          unmount: function () {}
+        },
+        {
+          id: "nian-score", name: "打年兽战绩",
+          mount: function (c, m, r) { c.textContent = ""; ready.then(function () { if (SF.nian) SF.nian.mountCard(c, m, r); }); },
           unmount: function () {}
         }
       ],

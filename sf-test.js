@@ -36,7 +36,7 @@
         "<h4>时间</h4><div class=\"sf-card sft-grid\">" + btn("t10", "拨到零点前10秒", false) + btn("treal", "恢复真实时间") + btn("mid", "立刻预演零点") + "</div>" +
         "<h4>福卡</h4><div class=\"sf-card sft-grid\">" + btn("extra", "额外抽一张") + btn("fill", "发满五福") + btn("day", "重置今日签到") + btn("once", "重置首次任务") + btn("fzero", "福卡清零") + "</div>" +
         "<h4>音效试听</h4><div class=\"sf-card sft-grid\">" + [["launch", "升空"], ["burst", "爆炸"], ["demo", "连放10次"], ["text", "文字烟花"], ["packet", "拆红包"], ["flip", "福卡"], ["snip", "剪纸"], ["save", "保存"]].map(function (s) { return btn("snd_" + s[0], s[1]); }).join("") + "</div>" +
-        "<h4>清理数据</h4><div class=\"sf-card sft-grid\">" + btn("cv", "清空语音缓存") + btn("crp", "清空红包记录") + btn("cpool", "清空祝福池") + btn("ccut", "清空作品墙") + "</div>" +
+        "<h4>清理数据</h4><div class=\"sf-card sft-grid\">" + btn("cv", "清空语音缓存") + btn("crp", "清空红包记录") + btn("cpool", "清空祝福池") + btn("ccut", "清空作品墙") + btn("ccp", "清空我的春联") + btn("crd", "重置灯谜进度") + btn("cnn", "清空打年兽记录") + "</div>" +
         "<h4>存储自检</h4><div class=\"sf-card\"><p class=\"tip\" style=\"margin:0 0 10px\">红包记录和祝福池现在走共享存储，聊天里和 App 里都能读写；这里检查的是 App 自己的存储。</p>" + btn("self", "自检") + "</div>" +
         '<p class="tip" style="margin-top:22px;text-align:center">新春年味 v' + SF.VER + "　GoldFuchs &amp; Claude</p>";
 
@@ -93,6 +93,9 @@
         else if (a === "crp") { SF.ls.del("rp_records"); SF.toast("红包记录已清空"); }
         else if (a === "cpool") { var c2 = await SF.chars(); for (var j = 0; j < c2.length; j++) SF.ls.del("rp_pool_" + c2[j].id); SF.toast("祝福池已清空"); }
         else if (a === "ccut") { if (await SF.confirm("清空作品墙", "所有窗花作品会被删除。继续吗？")) { await SF.st.del("cuts"); await SF.st.del("cut_wall"); SF.toast("已清空"); } }
+        else if (a === "ccp") { if (await SF.confirm("清空春联", "我的春联会被全部删除。继续吗？")) { await SF.st.del("couplets"); SF.toast("已清空"); } }
+        else if (a === "crd") { await SF.st.del("riddles"); SF.toast("灯谜进度已重置"); }
+        else if (a === "cnn") { if (await SF.confirm("清空打年兽记录", "最高分、最高连击、今日局数和已存的台词都会清掉。继续吗？")) { await SF.st.del("nian"); await SF.st.del("nian_lines"); SF.toast("已清空"); } }
         else if (a === "self") {
           var ok = await SF.st.set("selftest", { t: Date.now() }), back = await SF.st.get("selftest", null);
           await SF.st.del("selftest");

@@ -96,6 +96,22 @@
     shh: function () { if (ready()) noise(ctx.currentTime, 0.07, "highpass", 3500, 6500, 0.05); },
     save: function () { if (ready()) notes([659, 880, 1175], 0.1, 0.13, 0.5); },
     tap: function () { if (ready()) tone(700, ctx.currentTime, 0.07, "sine", 0.07, 520); },
+    // ---- 打年兽用：鼓组 ----
+    kick: function () { if (ready()) tone(160, ctx.currentTime, 0.24, "sine", 0.55, 42); },
+    snare: function (soft) { if (!ready()) return; var t = ctx.currentTime, k = soft ? 0.5 : 1; noise(t, 0.14, "bandpass", 2200, 900, 0.35 * k); tone(210, t, 0.1, "triangle", 0.18 * k, 120); },
+    hat: function (acc) { if (ready()) noise(ctx.currentTime, 0.045, "highpass", 7500, 0, acc ? 0.1 : 0.05); },
+    cow: function () { if (!ready()) return; var t = ctx.currentTime; tone(820, t, 0.09, "square", 0.035); tone(1230, t, 0.07, "square", 0.025); },
+    gong: function () {
+      if (!ready()) return; var t = ctx.currentTime;
+      tone(147, t, 1.6, "sine", 0.22); tone(221, t, 1.3, "sine", 0.12); tone(311, t, 1.0, "sine", 0.07); noise(t, 0.4, "bandpass", 800, 300, 0.1);
+    },
+    thump: function () { if (ready()) tone(200, ctx.currentTime, 0.12, "sine", 0.22, 90); },
+    hitg: function () { if (!ready()) return; var t = ctx.currentTime; noise(t, 0.12, "bandpass", 2500, 600, 0.3); tone(880, t, 0.16, "triangle", 0.12, 1400); },
+    hito: function () { if (!ready()) return; var t = ctx.currentTime; noise(t, 0.1, "bandpass", 1500, 500, 0.22); tone(520, t, 0.12, "triangle", 0.09, 700); },
+    bigb: function () { if (!ready()) return; var t = ctx.currentTime; tone(120, t, 0.5, "sine", 0.5, 35); noise(t, 0.5, "lowpass", 1200, 120, 0.55); crackle(t + 0.03, 0.6, 14, 0.25); },
+    miss: function () { if (ready()) tone(220, ctx.currentTime, 0.2, "sawtooth", 0.06, 110); },
+    bag: function () { if (ready()) notes([988, 1319], 0.07, 0.12, 0.4); },
+    win: function () { if (ready()) notes([523, 659, 784, 1047, 1319], 0.1, 0.14, 0.6); },
     // 试听：连放 10 次升空+爆炸
     demo: function () {
       for (var i = 0; i < 10; i++) setTimeout(function () { launch(); setTimeout(burst, 550); }, i * 900 + Math.random() * 200);
