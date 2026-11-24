@@ -45,7 +45,7 @@
 
   // ---------- 排谱 ----------
   function build(diff) {
-    var D = DIFFS[diff], stepMs = 60000 / D.bpm / 4, barMs = stepMs * 16, bar = 0, phases = [], notes = [], id = 0, W = 0, recent = [];
+    var D = DIFFS[diff], stepMs = 60000 / D.bpm / 4, barMs = stepMs * 16, bar = 0, phases = [], notes = [], id = 0, W = 0, recent = [], accent = {};
     PLAN.forEach(function (p) {
       phases.push({ kind: p.kind, s: bar, e: bar + p.bars, r: p.r || 0, i: p.i || 0 });
       if (p.pat) p.pat.forEach(function (items, bi) {
@@ -59,13 +59,14 @@
           } while (tries < 8 && recent.some(function (q) { return Math.hypot(q[0] - ex, q[1] - ey) < 0.6; }));
           recent.push([ex, ey]); if (recent.length > 2) recent.shift();
           notes.push({ id: id++, t: (bar + bi) * barMs + step * stepMs, type: type, state: 0, ex: ex, ey: ey, sxf: 0.14 + Math.random() * 0.72 });
+          accent[(bar + bi) * 16 + step] = type;
           W += type === "big" ? 2 : type === "bag" ? 0 : 1;
         });
       });
       bar += p.bars;
     });
     var last = notes[notes.length - 1];
-    return { D: D, stepMs: stepMs, barMs: barMs, phases: phases, notes: notes, W: W, totalBars: bar, lastT: last.t };
+    return { D: D, stepMs: stepMs, barMs: barMs, phases: phases, notes: notes, W: W, totalBars: bar, totalSteps: bar * 16, accent: accent, lastT: last.t };
   }
   function phaseAt(tl, bar) {
     for (var i = 0; i < tl.phases.length; i++) if (bar >= tl.phases[i].s && bar < tl.phases[i].e) return tl.phases[i];
@@ -168,14 +169,23 @@
     });
     // 腮红
     if (eye === "sparkle" || pose === "pant") { g.fillStyle = "rgba(255,150,150,.5)"; g.beginPath(); g.ellipse(-44, -36, 11, 7, 0, 0, 7); g.ellipse(44, -36, 11, 7, 0, 0, 7); g.fill(); }
-    // 鼻
-    g.fillStyle = "#7a1d12"; g.beginPath(); g.arc(-7, -46, 3, 0, 7); g.arc(7, -46, 3, 0, 7); g.fill();
     // 嘴
     g.save(); g.translate(0, -26);
     if (mouth === "roar") {
-      var mh = 16 + pl * 6; g.fillStyle = "#3a0f0a"; g.beginPath(); g.ellipse(0, 0, 30, mh, 0, 0, 7); g.fill();
-      g.fillStyle = "#ff9aa6"; g.beginPath(); g.ellipse(0, mh * 0.5, 16, mh * 0.5, 0, 0, 7); g.fill();
-      g.fillStyle = "#fff"; for (var j = -2; j <= 2; j++) { g.beginPath(); g.moveTo(j * 11 - 5, -mh * 0.9); g.lineTo(j * 11 + 5, -mh * 0.9); g.lineTo(j * 11, -mh * 0.9 + 11); g.closePath(); g.fill(); }
+      var mh = 16 + pl * 6, lip = -mh * 0.3;
+      g.fillStyle = "#3a0f0a"; g.beginPath(); g.ellipse(0, 0, 30, mh, 0, 0, 7); g.fill();
+      g.save(); g.beginPath(); g.ellipse(0, 0, 30, mh, 0, 0, 7); g.clip();
+      g.fillStyle = "#ff9aa6"; g.beginPath(); g.ellipse(0, mh * 0.62, 17, mh * 0.5, 0, 0, 7); g.fill();
+      g.fillStyle = "#fff";
+      [-19, -9.5, 0, 9.5, 19].forEach(function (x) {
+        var len = Math.abs(x) > 15 ? 17 : 10;
+        g.beginPath(); g.moveTo(x - 4.5, lip - 6); g.lineTo(x + 4.5, lip - 6); g.lineTo(x, lip + len); g.closePath(); g.fill();
+      });
+      g.restore();
+      // 上嘴唇：用和脸同样的渐变盖住牙根，牙齿看起来是从嘴唇下面长出来的
+      var hg2 = g.createLinearGradient(0, -96, 0, 30); hg2.addColorStop(0, "#ee5a3a"); hg2.addColorStop(1, "#cb3722");
+      g.fillStyle = hg2; g.beginPath(); g.moveTo(-34, -mh - 2); g.lineTo(34, -mh - 2); g.lineTo(34, lip); g.quadraticCurveTo(0, lip + 10, -34, lip); g.closePath(); g.fill();
+      g.strokeStyle = "#a82c1a"; g.lineWidth = 2.5; g.lineCap = "round"; g.beginPath(); g.moveTo(-31, lip + 0.5); g.quadraticCurveTo(0, lip + 10, 31, lip + 0.5); g.stroke();
     } else if (mouth === "wry") {
       g.strokeStyle = "#3a0f0a"; g.lineWidth = 5; g.lineCap = "round"; g.beginPath(); g.moveTo(-24, 0); g.lineTo(-8, -6); g.lineTo(8, 4); g.lineTo(24, -4); g.stroke();
     } else if (mouth === "tongue") {
@@ -190,6 +200,7 @@
       g.fillStyle = "#3a0f0a"; g.beginPath(); g.ellipse(0, 2, 10, 12, 0, 0, 7); g.fill();
     }
     g.restore();
+    g.fillStyle = "#7a1d12"; g.beginPath(); g.arc(-7, -46, 3, 0, 7); g.arc(7, -46, 3, 0, 7); g.fill();
     if (pose === "play3") { g.fillStyle = "rgba(30,20,20,.5)"; g.beginPath(); g.arc(0, -60, 62, 0, 7); g.fill(); }
     if (hurt && o.hv === 2) {
       g.font = "22px serif"; g.textAlign = "center";
@@ -260,9 +271,9 @@
     };
     G = {
       ov: ov, cv: cv, g: g, els: els, D: D, tl: tl, notes: tl.notes, diff: opts.diff, char: opts.char, lines: opts.lines || [],
-      t0: performance.now() + 900, paused: false, stop: false, lastStep: -1, W: 0, H: 0, dpr: 1, L: null,
+      startA: null, offset: opts.offset != null ? opts.offset : Math.round(SF.sfx.latency()) + 50, nextStep: 0, pulseStep: 0, brk: 0, paused: false, stop: false, W: 0, H: 0, dpr: 1, L: null,
       score: 0, combo: 0, maxCombo: 0, good: 0, okc: 0, miss: 0, hsum: 0, prot: 0, blood: 100, dmg: 100 / (0.62 * tl.W),
-      parts: [], texts: [], hurt: 0, hv: 0, taunt: 0, pulse: 0, drum: 0, shake: 0, flash: 0, inter: null, phase: null, end: null,
+      parts: [], texts: [], rings: [], judges: [], hurt: 0, hv: 0, taunt: 0, pulse: 0, drum: 0, shake: 0, flash: 0, inter: null, phase: null, end: null,
       avatar: null, bubT: { c: 0, n: 0 }, banT: 0, curBar: -1
     };
     var me = G;
@@ -274,7 +285,7 @@
       me.W = cv.clientWidth; me.H = cv.clientHeight;
       cv.width = me.W * me.dpr; cv.height = me.H * me.dpr; g.setTransform(me.dpr, 0, 0, me.dpr, 0, 0);
       var s = Math.min(me.W * 0.78 / 220, me.H * 0.5 / 280);
-      me.L = { W: me.W, H: me.H, s: s, cx: me.W / 2, cy: me.H * 0.4, rx: 58 * s, ry: 62 * s, by: 35 * s, dz: me.H * 0.82 };
+      me.L = { W: me.W, H: me.H, s: s, cx: me.W / 2, cy: me.H * 0.4, rx: 56 * s, ry: 46 * s, by: 52 * s, dz: me.H * 0.82 };
     }
     resize();
     var onRs = function () { resize(); }; window.addEventListener("resize", onRs);
@@ -282,7 +293,7 @@
     document.addEventListener("visibilitychange", onVis);
 
     function pause(ask) {
-      if (me.paused || me.stop) return; me.paused = true; me.pAt = performance.now();
+      if (me.paused || me.stop) return; me.paused = true; SF.sfx.suspend();
       if (!ask) SF.toast("已暂停，点一下继续");
       if (ask) {
         SF.confirm("退出打年兽", "本局不计入记录，确定退出吗？").then(function (ok) {
@@ -293,17 +304,17 @@
         ov.addEventListener("pointerdown", function once() { ov.removeEventListener("pointerdown", once); resume(); }, { once: true });
       }
     }
-    function resume() { if (!me.paused) return; me.t0 += performance.now() - me.pAt; me.paused = false; ov.classList.remove("paused"); }
+    function resume() { if (!me.paused) return; SF.sfx.resume(); me.paused = false; ov.classList.remove("paused"); }
     function quit() { cleanup(); if (onClose) onClose(); }
     function cleanup() {
-      me.stop = true; cancelAnimationFrame(me.raf);
+      me.stop = true; cancelAnimationFrame(me.raf); clearInterval(me.sch); if (SF.sfx) SF.sfx.resume();
       window.removeEventListener("resize", onRs); document.removeEventListener("visibilitychange", onVis);
       if (ov.parentNode) ov.remove(); G = null;
     }
     me.cleanup = cleanup;
     ov.querySelector(".sfn-x").onclick = function () { if (!me.end) pause(true); };
 
-    function clock() { return performance.now() - me.t0; }
+    function clock() { return me.startA == null ? -1000 : (SF.sfx.raw() - me.startA) * 1000 - me.offset; }
     function banner(txt, ms) {
       els.ban.textContent = txt; els.ban.classList.remove("on"); void els.ban.offsetWidth; els.ban.classList.add("on"); me.banT = (ms || 1100);
     }
@@ -318,6 +329,11 @@
         me.parts.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.5, age: 0, life: 0.6 + Math.random() * 0.6, c: SF.pick(cols || ["#ffd36b", "#ff7a3a", "#fff1b8", "#ff5b5b"]), s: 1.8 + Math.random() * 2, g: 0.09 });
       }
     }
+    function jfx(x, y, kind, label) {
+      x = clamp(x, 60, me.W - 60);
+      me.rings.push({ x: x, y: y, kind: kind, age: 0 });
+      me.judges.push({ x: x, y: y, kind: kind, label: label || (kind === "perfect" ? "精准" : kind === "good" ? "不错" : "漏"), age: 0 });
+    }
     function geomBase(n) { var L = me.L; return { sx: L.W * n.sxf, sy: L.H * 0.86, tx: L.cx + n.ex * L.rx, ty: L.cy + L.by + n.ey * L.ry }; }
     function geomAt(n, t) {
       var fly = D.fly * 1000, p = (t - (n.t - fly)) / fly; if (p < 0) return null;
@@ -327,7 +343,7 @@
 
     // ----- 判定 -----
     function updHud() {
-      els.blood.style.width = clamp(me.blood, 0, 100) + "%"; els.score.textContent = me.score; els.combo.textContent = "连击 " + me.combo;
+      els.blood.style.width = clamp(me.blood, 0, 100) + "%"; els.score.textContent = me.score; els.combo.innerHTML = me.brk > 0 ? '<span class="sfn-brk">连击中断</span>' : "连击 " + me.combo + (me.combo > 1 ? ' <span class="sfn-up">↑</span>' : "");
       els.prot.textContent = me.prot > 0 ? "🧧 福袋保护" : ""; els.prot.classList.toggle("on", me.prot > 0);
     }
     function hitNote(n, q, mult) {
@@ -345,7 +361,7 @@
       if (q === 2) me.good++; else me.okc++;
       me.hurt = n.type === "big" ? 1.5 : 1; me.hv = Math.floor(Math.random() * 3); me.flash = n.type === "big" ? 0.5 : 0.18; me.shake = n.type === "big" ? 0.4 : 0.1;
       burstAt(tx, ty, n.type === "big" ? 36 : 16, null, n.type === "big" ? 5 : 3.2);
-      text(tx, ty - 24, q === 2 ? "好!" : "一般", q === 2 ? "#ffe29a" : "#fff", 28);
+      jfx(tx, ty, q === 2 ? "perfect" : "good");
       if (SF.sfx) { if (n.type === "big") SF.sfx.bigb(); else if (q === 2) SF.sfx.hitg(); else SF.sfx.hito(); }
       updHud();
     }
@@ -355,8 +371,8 @@
       if (n.type === "bag") { if (early) burstAt(x, y, 8, ["#ffd77a"], 2); return; }
       me.miss++;
       if (me.prot > 0) { me.prot = 0; text(x, y - 20, "福袋挡住了！", "#ffd77a", 22); }
-      else me.combo = 0;
-      text(x, y - 6, early ? "太早" : "漏", "#ff8a8a", 26); me.taunt = early ? 0 : 0.8;
+      else { me.combo = 0; me.brk = 0.9; }
+      jfx(b.tx, b.ty, "miss", early ? "太早" : "漏"); me.taunt = early ? 0 : 0.8;
       if (early) burstAt(x, y, 10, ["#ff9a5a", "#fff"], 2.4);
       if (SF.sfx) SF.sfx.miss(); updHud();
     }
@@ -367,7 +383,8 @@
       hitNote(n, q, 1);
     }
     function tap(x, y) {
-      var t = clock(); if (t < 0 || me.end || me.paused) return;
+      if (me.startA == null || me.paused || me.end) return;
+      var t = clock(); if (t < 0) return;
       var L = me.L, dr = y > L.dz;
       if (dr) { me.drum = 1; if (me.inter == null && SF.sfx) { /* 声音由判定决定 */ } }
       if (me.inter) { interTap(x, y); if (dr && SF.sfx) SF.sfx.thump(); return; }
@@ -404,26 +421,40 @@
     });
 
     // ----- 节奏 -----
-    function playStep(s) {
-      var bar = Math.floor(s / 16), st = s % 16, ph = phaseAt(tl, bar), first = bar === ph.s && st === 0, S = SF.sfx;
-      if (st % 4 === 0) me.pulse = 1;
-      if (!S) return;
-      if (ph.kind === "intro") {
-        if (st % 4 === 0) { S.kick(); S.hat(true); }
-        if (st % 4 === 0) banner(["预备", "3", "2", "1"][st / 4], 700);
-      } else if (ph.kind === "round") {
-        if (first) S.gong();
-        if ([0, 3, 6, 10].indexOf(st) >= 0) S.kick();
-        if (st === 4 || st === 12) S.snare();
-        if (st % 2 === 0) S.hat(st % 4 === 2);
-        if (me.combo >= 10 && st % 4 === 2) S.cow();
-        if (me.combo >= 20 && (st === 7 || st === 15)) S.snare(true);
-      } else {
-        if (first) S.gong();
-        if (st === 0 || st === 8) S.kick();
-        if (st === 12) S.snare(true);
-        if (st % 4 === 0) S.hat(false);
+    var TOM = { 3: 240, 6: 200, 7: 260, 9: 230, 10: 190, 11: 250, 13: 220, 14: 180 };
+    // 每 25ms 检查一次，把接下来 150ms 内要响的鼓点按声卡时间排好，不受画面卡顿影响
+    function schedule() {
+      if (me.startA == null || me.stop || me.paused) return;
+      var now = SF.sfx.now(); if (now == null) return;
+      var stepSec = tl.stepMs / 1000;
+      while (me.nextStep < tl.totalSteps + 16 && me.startA + me.nextStep * stepSec < now + 0.15) {
+        playStep(me.nextStep, me.startA + me.nextStep * stepSec); me.nextStep++;
       }
+    }
+    // 每个爆竹落点都有一声对应的鼓：0/8 拍底鼓，4/12 拍军鼓，其他拍是不同音高的通鼓，大爆竹是低音鼓，福袋是铃声
+    function playStep(s, w) {
+      var bar = Math.floor(s / 16), st = s % 16, ph = phaseAt(tl, bar), first = bar === ph.s && st === 0, S = SF.sfx.sched;
+      if (ph.kind === "intro") { if (st % 4 === 0) { S.kick(w); S.hat(true, w); } return; }
+      if (ph.kind === "inter") {
+        if (first) S.gong(w);
+        if (st === 0 || st === 8) S.kick(w);
+        if (st === 12) S.snare(true, w);
+        if (st % 4 === 0) S.hat(false, w);
+        return;
+      }
+      var acc = tl.accent[s];
+      if (first) S.gong(w);
+      if (st === 0 || st === 8) S.kick(w, acc ? 1 : 0.5);
+      if (st === 4 || st === 12) S.snare(!acc, w);
+      if (st % 2 === 0) S.hat(st % 4 === 2, w);
+      if (acc) {
+        var onGrid = st === 0 || st === 4 || st === 8 || st === 12;
+        if (acc === "bag") S.chime(w);
+        else if (acc === "big") S.tom(110, w, 1.3);
+        else if (!onGrid) S.tom(TOM[st] || 210, w, 1);
+      }
+      if (me.combo >= 10 && st % 4 === 2) S.cow(w);
+      if (me.combo >= 20 && (st === 7 || st === 15)) S.snare(true, w);
     }
     function enterPhase(ph) {
       me.phase = ph;
@@ -433,7 +464,7 @@
         var cline = SF.pick(set.cl);
         if (ai.length && set !== SETS[3] && Math.random() < 0.65) cline = SF.pick(ai);
         me.inter = { set: set, idx: (ph.i - 1 + me.setOff) % 4, ph: ph, nline: SF.pick(set.nl), cline: cline, shownN: false, shownC: false, gotBag: false, gotNian: false, react: 0, av: null, nx: 0, ny: 0, boomed: false };
-        banner("中场休息 · 点点它们～", 1600);
+        banner("中场休息", 1400);
       } else me.inter = null;
     }
     me.setOff = Math.floor(Math.random() * 4);
@@ -453,7 +484,9 @@
       if (!document.body.contains(ov)) { cleanup(); return; }
       var dt = Math.min(0.05, (now - prevNow) / 1000); prevNow = now;
       if (me.paused) return;
-      var t = now - me.t0;
+      if (me.startA == null) { var c0 = SF.sfx.now(); if (c0 != null) me.startA = c0 + 0.9; }
+      schedule();
+      var t = clock();
       if (!me.end) update(t, dt);
       else me.parts.length && updateParts(dt);
       draw(t, dt);
@@ -463,8 +496,12 @@
     }
     function update(t, dt) {
       if (t >= 0) {
-        var si = Math.floor(t / tl.stepMs);
-        while (me.lastStep < si) { me.lastStep++; if (me.lastStep > 0 || true) playStep(me.lastStep); }
+        while (me.pulseStep * tl.stepMs <= t) {
+          var ps = me.pulseStep, pst = ps % 16;
+          if (pst % 4 === 0) me.pulse = 1;
+          if (pst % 4 === 0 && phaseAt(tl, Math.floor(ps / 16)).kind === "intro") banner(["预备", "3", "2", "1"][pst / 4], 700);
+          me.pulseStep++;
+        }
         var bar = Math.floor(t / tl.barMs), ph = phaseAt(tl, bar);
         if (ph !== me.phase) enterPhase(ph);
         me.curBar = bar;
@@ -479,11 +516,53 @@
       if (me.combo >= 10 && Math.random() < (me.combo >= 20 ? 0.3 : 0.14)) me.parts.push({ x: Math.random() * me.W, y: -8, vx: (Math.random() - 0.5) * 0.6, vy: 1 + Math.random(), age: 0, life: 3, c: SF.pick(["#ffd36b", "#ff7a7a", "#fff1b8"]), s: 2, g: 0 });
       updateParts(dt);
       me.texts = me.texts.filter(function (x) { x.age += dt; x.y -= 24 * dt; return x.age < x.life; });
+      me.rings = me.rings.filter(function (r) { r.age += dt; return r.age < 0.45; });
+      me.judges = me.judges.filter(function (j) { j.age += dt; return j.age < 0.6; });
+      if (me.brk > 0) { me.brk -= dt; if (me.brk <= 0) updHud(); }
       var last = me.notes[me.notes.length - 1];
       if (last.state >= 2 && t > tl.lastT + 700 && !me.end) finish(me.blood <= 0);
     }
 
     // ----- 绘制 -----
+    var JC = { perfect: ["#fff8d0", "#ffd23f", "#ff8f1f", "#ffcf5a"], good: ["#f0faff", "#79ccff", "#2f7bff", "#7cb8ff"], miss: ["#ffe0e6", "#ff8aa0", "#c23a5a", "#ff9aae"] };
+    function drawRing(x, y, a, t) {
+      var r = 33 + 2 * Math.sin(t * 0.012);
+      g.save(); g.globalAlpha = a;
+      g.strokeStyle = "rgba(25,8,35,.8)"; g.lineWidth = 9; g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke();
+      g.strokeStyle = "#ffd23f"; g.lineWidth = 4; g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke();
+      g.strokeStyle = "rgba(25,8,35,.65)"; g.lineWidth = 4; g.beginPath(); g.arc(x, y, r - 11, 0, 7); g.stroke();
+      g.strokeStyle = "#fff6c8"; g.lineWidth = 1.6; g.beginPath(); g.arc(x, y, r - 11, 0, 7); g.stroke();
+      g.fillStyle = "#ffd23f";
+      for (var i = 0; i < 4; i++) { var an = i * 1.5708 + 0.785; g.beginPath(); g.arc(x + Math.cos(an) * (r + 8), y + Math.sin(an) * (r + 8), 2.2, 0, 7); g.fill(); }
+      g.restore();
+    }
+    function drawRingFx() {
+      me.rings.forEach(function (r) {
+        var k = r.age / 0.45, col = r.kind === "perfect" ? "#ffd23f" : r.kind === "good" ? "#5ab4ff" : "#b8bccc";
+        g.save(); g.globalAlpha = 1 - k;
+        if (r.kind === "miss") { g.setLineDash([6, 6]); g.lineWidth = 3; g.strokeStyle = col; g.beginPath(); g.arc(r.x, r.y, 33 - 8 * k, 0, 7); g.stroke(); }
+        else {
+          g.strokeStyle = col; g.lineWidth = 6 * (1 - k) + 1; g.beginPath(); g.arc(r.x, r.y, 33 + 34 * k, 0, 7); g.stroke();
+          g.globalAlpha = 0.35 * (1 - k); g.fillStyle = col; g.beginPath(); g.arc(r.x, r.y, 33, 0, 7); g.fill();
+        }
+        g.restore();
+      });
+    }
+    // 判定文字：渐变填充 + 深色描边 + 外发光，弹出后淡出
+    function drawJudges() {
+      me.judges.forEach(function (j) {
+        var k = j.age / 0.6, pop = k < 0.2 ? 0.6 + 0.65 * (k / 0.2) : k < 0.35 ? 1.25 - 0.25 * ((k - 0.2) / 0.15) : 1;
+        var al = k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45, c = JC[j.kind], size = 40;
+        g.save(); g.globalAlpha = clamp(al, 0, 1); g.translate(j.x, j.y + 52 - k * 10); g.scale(pop, pop);
+        g.font = "italic 800 " + size + 'px "PingFang SC","Noto Sans SC",sans-serif'; g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round";
+        var gr = g.createLinearGradient(0, -size / 2, 0, size / 2);
+        gr.addColorStop(0, c[0]); gr.addColorStop(0.45, c[1]); gr.addColorStop(0.55, c[2]); gr.addColorStop(1, c[3]);
+        g.shadowColor = c[1]; g.shadowBlur = 16; g.strokeStyle = "rgba(25,8,35,.85)"; g.lineWidth = 7; g.strokeText(j.label, 0, 0);
+        g.shadowBlur = 0; g.fillStyle = gr; g.fillText(j.label, 0, 0);
+        g.lineWidth = 1.2; g.strokeStyle = "rgba(255,255,255,.55)"; g.strokeText(j.label, 0, 0);
+        g.restore();
+      });
+    }
     function drawBg(t) {
       var L = me.L, bgr = g.createLinearGradient(0, 0, 0, L.H); bgr.addColorStop(0, "#0d1130"); bgr.addColorStop(0.55, "#3b1d3e"); bgr.addColorStop(1, "#7a2230");
       g.fillStyle = bgr; g.fillRect(0, 0, L.W, L.H);
@@ -512,7 +591,7 @@
       g.fillStyle = me.drum > 0.1 ? "#fff3d0" : "#f3d9a8"; g.beginPath(); g.ellipse(0, -h * 0.2, w / 2, h * 0.28, 0, 0, 7); g.fill();
       g.strokeStyle = "#ffd77a"; g.lineWidth = 3; g.stroke();
       g.restore();
-      if (!me.end && !me.inter) { g.fillStyle = "rgba(255,243,208,.6)"; g.font = '12px "PingFang SC",sans-serif'; g.textAlign = "center"; g.fillText("点爆竹，或者点鼓", cx, L.H * 0.985); }
+      if (!me.end && !me.inter) { g.fillStyle = "rgba(255,243,208,.6)"; g.font = '12px "PingFang SC",sans-serif'; g.textAlign = "center"; g.fillText("点击爆竹或战鼓", cx, L.H * 0.985); }
     }
     function interScene(t) {
       var I = me.inter, L = me.L, ph = I.ph, u = clamp((t - ph.s * tl.barMs) / ((ph.e - ph.s) * tl.barMs), 0, 1), set = I.set, idx = I.idx;
@@ -568,13 +647,11 @@
       if (!me.end) me.notes.forEach(function (n) {
         if (n.state === 2 || n.state === 3 || t < 0) return;
         var gm = geomAt(n, t); if (!gm) return;
-        var a = clamp((gm.p - 0.35) / 0.65, 0, 1);
-        if (a > 0 && n.state === 0) {
-          var rg = g.createRadialGradient(gm.tx, gm.ty, 2, gm.tx, gm.ty, 30 + 6 * Math.sin(t * 0.02)); rg.addColorStop(0, "rgba(255,225,130," + 0.75 * a + ")"); rg.addColorStop(1, "rgba(255,225,130,0)");
-          g.fillStyle = rg; g.beginPath(); g.arc(gm.tx, gm.ty, 38, 0, 7); g.fill();
-        }
+        var a = clamp((gm.p - 0.15) / 0.5, 0, 1);
+        if (n.state === 0) drawRing(gm.tx, gm.ty, 0.3 + 0.7 * a, t);
         drawNote(g, n, gm.x, gm.y, gm.sc * (n.state === 1 ? 1.15 : 1), t);
       });
+      drawRingFx();
       // 粒子
       g.globalCompositeOperation = "lighter";
       me.parts.forEach(function (p) { g.globalAlpha = clamp(1 - p.age / p.life, 0, 1); g.fillStyle = p.c; g.beginPath(); g.arc(p.x, p.y, p.s, 0, 7); g.fill(); });
@@ -586,6 +663,7 @@
         sc.ems.forEach(function (e) { emoji(g, e[0], e[1], e[2], e[3], e[4]); });
         if (!me.inter.gotBag) emoji(g, "🧧", A.x + (A.x > L.W / 2 ? -1 : 1) * (A.r + 8), A.y - A.r - 6 + Math.sin(tt * 5) * 4, 24, 0);
       }
+      drawJudges();
       // 飘字
       me.texts.forEach(function (x) {
         g.globalAlpha = clamp(1 - x.age / x.life, 0, 1); g.fillStyle = x.col; g.font = "700 " + x.size + 'px "PingFang SC",sans-serif'; g.textAlign = "center"; g.textBaseline = "middle";
@@ -635,13 +713,64 @@
       };
     }
 
-    banner("准备…", 900);
+    banner("准备", 900);
+    me.sch = setInterval(schedule, 25);
     me.raf = requestAnimationFrame(frame);
   }
   function loadAvatar(url) {
     return new Promise(function (res) {
       if (!url) { res(null); return; }
       var im = new Image(); im.onload = function () { res(im); }; im.onerror = function () { res(null); }; im.src = url; setTimeout(function () { res(null); }, 2500);
+    });
+  }
+
+  // ---------- 节拍校准：跟着“嗒”声点 12 拍，取中位数当作这台手机的延迟 ----------
+  function calibrate(onDone) {
+    if (SF.sfx && !SF.sfx.enabled()) { SF.toast("请先打开音效再校准"); return; }
+    var timers = [], clicks = [], taps = [], state = "idle";
+    var C = SF.layer(SF.appRoot, "节拍校准", { k: "CALIBRATION", key: "nianCal", onClose: function () { timers.forEach(clearTimeout); state = "done"; } });
+    if (!C) return;
+    C.body.innerHTML = '<p class="tip">跟着节拍，在听到“嗒”声的同时点击圆形按钮，共 12 拍。建议在安静的地方进行。</p>' +
+      '<div class="sfn-cal"><button class="sfn-pad" type="button">开始</button></div><p class="sfn-cs">准备好后点“开始”</p><div class="sfn-cres"></div>';
+    var pad = C.body.querySelector(".sfn-pad"), cs = C.body.querySelector(".sfn-cs"), res = C.body.querySelector(".sfn-cres");
+    function median(a) { var b = a.slice().sort(function (x, y) { return x - y; }), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; }
+    function finish() {
+      if (state === "done") return; state = "result";
+      var ds = [];
+      for (var i = 3; i < clicks.length; i++) {
+        var best = null;
+        taps.forEach(function (tt) { var d = (tt - clicks[i]) * 1000; if (Math.abs(d) <= 350 && (best == null || Math.abs(d) < Math.abs(best))) best = d; });
+        if (best != null) ds.push(best);
+      }
+      pad.textContent = "完成"; pad.disabled = true;
+      if (ds.length < 5) { cs.textContent = "有效点击太少，请再试一次"; res.innerHTML = '<button class="sfb block" data-a="retry" type="button">重试</button>'; return; }
+      var m = Math.round(clamp(median(ds), -50, 400)), dev = median(ds.map(function (d) { return Math.abs(d - m); }));
+      cs.textContent = "测得延迟约 " + m + " ms" + (dev > 60 ? "（节奏有点不稳，建议重试）" : "");
+      res.innerHTML = '<div class="sfrow" style="gap:10px"><button class="sfb" style="flex:1" data-a="use" type="button">采用</button><button class="sfb ghost" data-a="retry" type="button">重试</button></div>';
+      res.dataset.m = m;
+    }
+    function start() {
+      SF.audio.unlock();
+      var base = SF.sfx.now();
+      if (base == null) { cs.textContent = "音频准备中，请再点一次"; return; }
+      state = "run"; clicks = []; taps = []; pad.textContent = "点！"; res.innerHTML = "";
+      for (var i = 0; i < 12; i++) {
+        var w = base + 0.9 + i * 0.7; clicks.push(w); SF.sfx.sched.click(w);
+        (function (k) { timers.push(setTimeout(function () { cs.textContent = "第 " + (k + 1) + " / 12 拍"; }, (0.9 + k * 0.7) * 1000)); })(i);
+      }
+      timers.push(setTimeout(finish, (0.9 + 12 * 0.7 + 0.5) * 1000));
+    }
+    pad.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      if (state === "idle") start();
+      else if (state === "run") { taps.push(SF.sfx.raw()); pad.classList.add("hit"); setTimeout(function () { pad.classList.remove("hit"); }, 90); }
+    });
+    C.body.addEventListener("click", async function (e) {
+      var a = e.target.closest("[data-a]"); if (!a) return;
+      if (a.dataset.a === "retry") { state = "idle"; clicks = []; taps = []; pad.disabled = false; pad.textContent = "开始"; cs.textContent = "准备好后点“开始”"; res.innerHTML = ""; }
+      else if (a.dataset.a === "use") {
+        await SF.st.set("nian_cal", { offset: +res.dataset.m, at: Date.now() }); SF.toast("校准完成"); C.close(); if (onDone) onDone();
+      }
     });
   }
 
@@ -655,7 +784,7 @@
     open: async function () {
       var L = SF.layer(SF.appRoot, "打年兽", { full: true, k: "BEAT NIAN", key: "nian" });
       if (!L) return;
-      var rec = await load(), lines = await SF.st.get("nian_lines", {}), chars = await SF.chars();
+      var rec = await load(), lines = await SF.st.get("nian_lines", {}), chars = await SF.chars(), cal = await SF.st.get("nian_cal", null);
       var diff = DIFFS[rec.lastDiff] ? rec.lastDiff : "mid", cid = rec.lastChar || (chars[0] && chars[0].id) || null, busy = false;
       if (cid && !chars.some(function (c) { return c.id === cid; })) cid = chars[0] ? chars[0].id : null;
 
@@ -667,8 +796,9 @@
         h += "<h4>中场陪你的 TA</h4>" + (chars.length ? SF.chipRow(chars.map(function (c) { return '<span class="sfchip' + (cid === c.id ? " on" : "") + '" data-c="' + SF.esc(c.id) + '">' + SF.esc(SF.cname(c)) + "</span>"; }).join("")) : '<p class="tip">没有读取到角色，中场就只有年兽表演。</p>');
         if (cid) h += '<div class="sfrow" style="justify-content:space-between;margin-top:2px"><span class="tip" style="margin:0">已有 ' + n + ' 句 TA 的台词</span><span class="sf-lnk" data-a="lines">' + (n ? "重新写 10 句" : "让 TA 写 10 句") + "（AI 1 次）</span></div>";
         h += '<h4>我的纪录 · ' + DIFFS[diff].n + '</h4><div class="sf-card"><div class="sfn-st"><div><small>最高分</small><b>' + b.score + "</b></div><div><small>最高连击</small><b>" + b.combo + "</b></div><div><small>今日局数</small><b>" + rec.today + "/" + LIMIT + "</b></div></div></div>";
+        h += '<h4>节拍校准</h4><div class="sf-card"><div class="sfrow" style="justify-content:space-between;gap:12px"><span class="tip" style="margin:0">' + (cal ? "已校准 · 延迟 " + cal.offset + " ms" : "未校准 · 使用默认值，建议先校准") + '</span><button class="sfb sm" data-a="cal" type="button">' + (cal ? "重新校准" : "开始校准") + "</button></div>" + (cal ? '<div style="text-align:right;margin-top:6px"><span class="sf-lnk" data-a="calreset">恢复默认</span></div>' : "") + "</div>";
         h += '<button class="sfb block" style="margin-top:18px" data-a="play" type="button">开打</button>';
-        h += '<p class="tip" style="margin-top:10px">爆竹从下面飘向年兽，飘到它身上的那一下点爆竹（或点下面的鼓）。大爆竹点两下，福袋能挡一次漏。中场时可以点角色领福袋、点年兽逗它。每天前 ' + LIMIT + " 局计入记录，之后还能玩，但不计入。</p>";
+        h += '<div class="sfn-tips"><span>爆竹抵达年兽的瞬间，点击爆竹或战鼓</span><span>大爆竹需连点两下 · 福袋可抵消一次失误</span><span>每日前 ' + LIMIT + " 局计入战绩</span></div>";
         if (rec.recent.length) h += "<h4>最近 " + rec.recent.length + ' 局</h4><div class="sf-card">' + rec.recent.map(function (x) {
           return '<div class="sfr-i"><div><small>' + fmt(x.t) + " · " + (DIFFS[x.diff] || {}).n + (x.win ? " · 吓跑了" : "") + "</small><p>" + x.score + " 分 · " + x.combo + " 连击 · 评级 " + x.grade + "</p></div></div>";
         }).join("") + "</div>";
@@ -694,11 +824,13 @@
           } catch (err) { SF.toast("失败：" + (err.message || err)); }
           busy = false; render();
         }
+        else if (a.dataset.a === "cal") calibrate(async function () { cal = await SF.st.get("nian_cal", null); render(); });
+        else if (a.dataset.a === "calreset") { await SF.st.del("nian_cal"); cal = null; render(); }
         else if (a.dataset.a === "play") {
           SF.audio.unlock();
           var char = chars.filter(function (c) { return c.id === cid; })[0] || null;
           rec.lastDiff = diff; rec.lastChar = cid; await SF.st.set("nian", rec);
-          startGame({ diff: diff, char: char, lines: (cid && lines[cid]) || [] }, async function () { rec = await load(); render(); });
+          startGame({ diff: diff, char: char, lines: (cid && lines[cid]) || [], offset: cal ? cal.offset : null }, async function () { rec = await load(); render(); });
         }
       });
       render();
@@ -709,6 +841,13 @@
 .sfn-st{display:flex;justify-content:space-around;text-align:center}
 .sfn-st small{display:block;font-size:10.5px;letter-spacing:.2em;color:var(--k);margin-bottom:6px}
 .sfn-st b{font:300 28px/1.1 -apple-system,"PingFang SC",sans-serif;color:var(--big);font-variant-numeric:tabular-nums}
+.sfn-tips{margin-top:12px;text-align:center}
+.sfn-tips span{display:block;font-size:12px;line-height:1.9;letter-spacing:.06em;color:var(--k)}
+.sfn-cal{display:flex;justify-content:center;margin:18px 0 8px}
+.sfn-pad{width:150px;height:150px;border-radius:50%;border:0;font:600 24px/1 -apple-system,"PingFang SC",sans-serif;letter-spacing:.2em;color:#fff6ec;background:radial-gradient(circle at 35% 30%,#f2603f,#a8281c);box-shadow:0 6px 22px rgba(168,40,28,.45);transition:transform .08s,filter .08s;touch-action:manipulation}
+.sfn-pad.hit{transform:scale(.93);filter:brightness(1.25)}.sfn-pad[disabled]{opacity:.5}
+.sfn-cs{text-align:center;font-size:13px;color:var(--ctx);min-height:20px;margin:6px 0 12px}
+.sfn-brk{color:#ff8aa0}.sfn-up{color:#ffd23f}
 .sfn-g{position:absolute;inset:0;background:#0d1130;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:-apple-system,"PingFang SC","Noto Sans SC",sans-serif;color:#fff3dc}
 .sfn-cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .sfn-g.paused::after{content:"已暂停，点一下继续";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,6,20,.6);font-size:16px;letter-spacing:.3em}

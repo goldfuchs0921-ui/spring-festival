@@ -14,7 +14,8 @@
     if (ctx.state === "suspended") ctx.resume();
     return ctx;
   }
-  function ready() { return SF.sfx.enabled() && active < 16 && !!getCtx(); }
+  function rdy2() { return SF.sfx.enabled() && !!getCtx(); }
+  function ready() { return SF.sfx.enabled() && active < 32 && !!getCtx(); }
 
   function tone(f, t, dur, type, vol, f2, free) {
     var o = ctx.createOscillator(), g = ctx.createGain();
@@ -96,14 +97,24 @@
     shh: function () { if (ready()) noise(ctx.currentTime, 0.07, "highpass", 3500, 6500, 0.05); },
     save: function () { if (ready()) notes([659, 880, 1175], 0.1, 0.13, 0.5); },
     tap: function () { if (ready()) tone(700, ctx.currentTime, 0.07, "sine", 0.07, 520); },
-    // ---- 打年兽用：鼓组 ----
-    kick: function () { if (ready()) tone(160, ctx.currentTime, 0.24, "sine", 0.55, 42); },
-    snare: function (soft) { if (!ready()) return; var t = ctx.currentTime, k = soft ? 0.5 : 1; noise(t, 0.14, "bandpass", 2200, 900, 0.35 * k); tone(210, t, 0.1, "triangle", 0.18 * k, 120); },
-    hat: function (acc) { if (ready()) noise(ctx.currentTime, 0.045, "highpass", 7500, 0, acc ? 0.1 : 0.05); },
-    cow: function () { if (!ready()) return; var t = ctx.currentTime; tone(820, t, 0.09, "square", 0.035); tone(1230, t, 0.07, "square", 0.025); },
-    gong: function () {
-      if (!ready()) return; var t = ctx.currentTime;
-      tone(147, t, 1.6, "sine", 0.22); tone(221, t, 1.3, "sine", 0.12); tone(311, t, 1.0, "sine", 0.07); noise(t, 0.4, "bandpass", 800, 300, 0.1);
+    // ---- 打年兽用：鼓组（按声卡时钟提前排好，节拍才稳）----
+    now: function () { if (!ctx) getCtx(); return ctx && ctx.state === "running" ? ctx.currentTime : null; },
+    raw: function () { return ctx ? ctx.currentTime : 0; },
+    suspend: function () { if (ctx && ctx.state === "running") ctx.suspend(); },
+    resume: function () { if (ctx && ctx.state === "suspended") ctx.resume(); },
+    latency: function () { return ctx ? ((ctx.outputLatency || 0) + (ctx.baseLatency || 0)) * 1000 : 0; },
+    sched: {
+      kick: function (w, v) { if (rdy2()) tone(160, w, 0.24, "sine", 0.55 * (v == null ? 1 : v), 42); },
+      snare: function (soft, w) { if (!rdy2()) return; var k = soft ? 0.45 : 1; noise(w, 0.14, "bandpass", 2200, 900, 0.35 * k); tone(210, w, 0.1, "triangle", 0.18 * k, 120); },
+      hat: function (acc, w) { if (rdy2()) noise(w, 0.045, "highpass", 7500, 0, acc ? 0.1 : 0.05); },
+      tom: function (f, w, v) { if (!rdy2()) return; var k = v == null ? 1 : v; tone(f, w, 0.2, "sine", 0.42 * k, f * 0.55); noise(w, 0.05, "bandpass", 1800, 900, 0.12 * k); },
+      chime: function (w) { if (!rdy2()) return; tone(1319, w, 0.3, "sine", 0.14); tone(1760, w + 0.05, 0.3, "sine", 0.1); },
+      cow: function (w) { if (!rdy2()) return; tone(820, w, 0.09, "square", 0.035); tone(1230, w, 0.07, "square", 0.025); },
+      gong: function (w) {
+        if (!rdy2()) return;
+        tone(147, w, 1.6, "sine", 0.22); tone(221, w, 1.3, "sine", 0.12); tone(311, w, 1.0, "sine", 0.07); noise(w, 0.4, "bandpass", 800, 300, 0.1);
+      },
+      click: function (w) { if (!rdy2()) return; tone(1400, w, 0.06, "sine", 0.3); noise(w, 0.02, "highpass", 6000, 0, 0.12); }
     },
     thump: function () { if (ready()) tone(200, ctx.currentTime, 0.12, "sine", 0.22, 90); },
     hitg: function () { if (!ready()) return; var t = ctx.currentTime; noise(t, 0.12, "bandpass", 2500, 600, 0.3); tone(880, t, 0.16, "triangle", 0.12, 1400); },
