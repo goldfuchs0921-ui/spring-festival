@@ -262,16 +262,16 @@
     ov.style.zIndex = SF.zTop();
     ov.innerHTML = '<canvas class="sfn-cv"></canvas>' +
       '<div class="sfn-hud"><button class="sfn-x" type="button">✕</button><div class="sfn-bl"><span>年兽</span><div><i></i></div></div><div class="sfn-sc"><b>0</b><small>连击 0</small></div></div>' +
-      '<div class="sfn-prot"></div><div class="sfn-ban"></div><div class="sfn-bub c"></div><div class="sfn-bub n"></div>';
+      '<div class="sfn-prot"></div><div class="sfn-hint"></div><div class="sfn-ban"></div><div class="sfn-bub c"></div><div class="sfn-bub n"></div>';
     root.appendChild(ov);
     var cv = ov.querySelector(".sfn-cv"), g = cv.getContext("2d");
     var els = {
       blood: ov.querySelector(".sfn-bl i"), score: ov.querySelector(".sfn-sc b"), combo: ov.querySelector(".sfn-sc small"),
-      prot: ov.querySelector(".sfn-prot"), ban: ov.querySelector(".sfn-ban"), bc: ov.querySelector(".sfn-bub.c"), bn: ov.querySelector(".sfn-bub.n")
+      prot: ov.querySelector(".sfn-prot"), hint: ov.querySelector(".sfn-hint"), ban: ov.querySelector(".sfn-ban"), bc: ov.querySelector(".sfn-bub.c"), bn: ov.querySelector(".sfn-bub.n")
     };
     G = {
       ov: ov, cv: cv, g: g, els: els, D: D, tl: tl, notes: tl.notes, diff: opts.diff, char: opts.char, lines: opts.lines || [],
-      startA: null, offset: opts.offset != null ? opts.offset : Math.round(SF.sfx.latency()) + 50, nextStep: 0, pulseStep: 0, brk: 0, paused: false, stop: false, W: 0, H: 0, dpr: 1, L: null,
+      startA: null, offset: opts.offset != null ? opts.offset : Math.round(SF.sfx.latency()) + 50, nextStep: 0, pulseStep: 0, brk: 0, soft: false, epoch: SF.sfx.epoch(), waitStart: performance.now(), lastT: 0, paused: false, stop: false, W: 0, H: 0, dpr: 1, L: null,
       score: 0, combo: 0, maxCombo: 0, good: 0, okc: 0, miss: 0, hsum: 0, prot: 0, blood: 100, dmg: 100 / (0.62 * tl.W),
       parts: [], texts: [], rings: [], judges: [], hurt: 0, hv: 0, taunt: 0, pulse: 0, drum: 0, shake: 0, flash: 0, inter: null, phase: null, end: null,
       avatar: null, bubT: { c: 0, n: 0 }, banT: 0, curBar: -1
@@ -292,8 +292,9 @@
     var onVis = function () { if (document.hidden && !me.paused && !me.end) pause(false); };
     document.addEventListener("visibilitychange", onVis);
 
+    function nowSec() { return me.soft ? performance.now() / 1000 : SF.sfx.raw(); }
     function pause(ask) {
-      if (me.paused || me.stop) return; me.paused = true; SF.sfx.suspend();
+      if (me.paused || me.stop) return; me.paused = true; me.pAt = nowSec(); if (SF.sfx.hush) SF.sfx.hush();
       if (!ask) SF.toast("已暂停，点一下继续");
       if (ask) {
         SF.confirm("退出打年兽", "本局不计入记录，确定退出吗？").then(function (ok) {
@@ -301,20 +302,21 @@
         });
       } else {
         ov.classList.add("paused");
-        ov.addEventListener("pointerdown", function once() { ov.removeEventListener("pointerdown", once); resume(); }, { once: true });
+        ov.addEventListener("pointerdown", function once() { ov.removeEventListener("pointerdown", once); SF.audio.unlock(); resume(); }, { once: true });
       }
     }
-    function resume() { if (!me.paused) return; SF.sfx.resume(); me.paused = false; ov.classList.remove("paused"); }
+    // 暂停期间不动声卡（避免暂停/恢复指令打架卡死），只把时间线整体往后推
+    function resume() { if (!me.paused) return; if (me.startA != null) me.startA += nowSec() - me.pAt; me.paused = false; ov.classList.remove("paused"); }
     function quit() { cleanup(); if (onClose) onClose(); }
     function cleanup() {
-      me.stop = true; cancelAnimationFrame(me.raf); clearInterval(me.sch); if (SF.sfx) { SF.sfx.resume(); if (SF.sfx.hush) SF.sfx.hush(); }
+      me.stop = true; cancelAnimationFrame(me.raf); clearInterval(me.sch); if (SF.sfx && SF.sfx.hush) SF.sfx.hush();
       window.removeEventListener("resize", onRs); document.removeEventListener("visibilitychange", onVis);
       if (ov.parentNode) ov.remove(); G = null;
     }
     me.cleanup = cleanup;
     ov.querySelector(".sfn-x").onclick = function () { if (!me.end) pause(true); };
 
-    function clock() { return me.startA == null ? -1000 : (SF.sfx.raw() - me.startA) * 1000 - me.offset; }
+    function clock() { return me.startA == null ? -1000 : (nowSec() - me.startA) * 1000 - me.offset; }
     function banner(txt, ms) {
       els.ban.textContent = txt; els.ban.classList.remove("on"); void els.ban.offsetWidth; els.ban.classList.add("on"); me.banT = (ms || 1100);
     }
@@ -385,22 +387,18 @@
       if (me.startA == null || me.paused || me.end) return;
       var t = clock(); if (t < 0) return;
       var L = me.L, dr = y > L.dz;
-      if (dr) { me.drum = 1; if (me.inter == null && SF.sfx) { /* 声音由判定决定 */ } }
+      if (dr) me.drum = 1;
       if (me.inter) { interTap(x, y); if (dr && SF.sfx) SF.sfx.thump(); return; }
       var ch = me.notes.filter(function (n) { return n.state === 1; })[0];
       if (ch && t - ch.firstT <= 420) { hitNote(ch, ch.q, 1); return; }
+      // 点哪里都行：只看时机，取离当前时刻最近、且在判定窗口里的那个爆竹；太早（窗口外）没有反应
       var target = null, bd = 1e9;
       me.notes.forEach(function (n) {
         if (n.state !== 0) return;
-        if (dr) { var d = Math.abs(t - n.t); if (d <= D.ow && d < bd) { bd = d; target = n; } }
-        else {
-          var p = geomAt(n, t); if (!p) return;
-          var dd = Math.hypot(p.x - x, p.y - y), rad = n.type === "big" ? 58 : 46;
-          if (dd <= rad && dd < bd) { bd = dd; target = n; }
-        }
+        var d = Math.abs(t - n.t); if (d <= D.ow && d < bd) { bd = d; target = n; }
       });
       if (!target) { if (dr && SF.sfx) SF.sfx.thump(); return; }
-      judge(target, t, dr);
+      judge(target, t, true);
     }
     function interTap(x, y) {
       var I = me.inter, L = me.L;
@@ -420,10 +418,10 @@
     });
 
     // ----- 节奏 -----
-    var TOM = { 3: 240, 6: 200, 7: 260, 9: 230, 10: 190, 11: 250, 13: 220, 14: 180 };
+    var TOM = { 3: 220, 6: 294, 7: 247, 9: 185, 10: 220, 11: 165, 13: 294, 14: 247 }; // A D B F# A E D B（D 宫五声音阶）
     // 每 25ms 检查一次，把接下来 150ms 内要响的鼓点按声卡时间排好，不受画面卡顿影响
     function schedule() {
-      if (me.startA == null || me.stop || me.paused) return;
+      if (me.startA == null || me.stop || me.paused || me.soft) return;
       var now = SF.sfx.now(); if (now == null) return;
       var stepSec = tl.stepMs / 1000;
       while (me.nextStep < tl.totalSteps + 16 && me.startA + me.nextStep * stepSec < now + 0.15) {
@@ -449,7 +447,7 @@
       if (acc) {
         var onGrid = st === 0 || st === 4 || st === 8 || st === 12;
         if (acc === "bag") S.chime(w);
-        else if (acc === "big") S.tom(110, w, 1.3);
+        else if (acc === "big") S.kick(w, 1.2);
         else if (!onGrid) S.tom(TOM[st] || 210, w, 1);
       }
       if (me.combo >= 10 && st % 4 === 2) S.cow(w);
@@ -483,9 +481,24 @@
       if (!document.body.contains(ov)) { cleanup(); return; }
       var dt = Math.min(0.05, (now - prevNow) / 1000); prevNow = now;
       if (me.paused) return;
-      if (me.startA == null) { var c0 = SF.sfx.now(); if (c0 != null) me.startA = c0 + 0.9; }
+      if (me.startA == null) {
+        var c0 = me.soft ? performance.now() / 1000 : SF.sfx.now();
+        if (c0 != null) { me.startA = c0 + 0.9; els.hint.classList.remove("on"); }
+        else {
+          var waited = performance.now() - me.waitStart;
+          if (waited > 1200) { els.hint.textContent = "点一下屏幕开始"; els.hint.classList.add("on"); }
+          if (waited > 3500) { me.soft = true; els.hint.classList.remove("on"); SF.toast("音频未启动，本局静音"); }
+        }
+      } else if (!me.soft) {
+        // 音频系统被换成新的：把时间线接上，不要从头来
+        var ep = SF.sfx.epoch();
+        if (ep !== me.epoch) { me.epoch = ep; me.startA = SF.sfx.raw() - (me.lastT + me.offset) / 1000; }
+        // 音频被系统打断：时钟会停住，提示点一下继续
+        var running = SF.sfx.state() === "running";
+        if (!running) { els.hint.textContent = "音频被系统打断，点一下屏幕继续"; els.hint.classList.add("on"); } else els.hint.classList.remove("on");
+      }
       schedule();
-      var t = clock();
+      var t = clock(); if (me.startA != null) me.lastT = t;
       if (!me.end) update(t, dt);
       else me.parts.length && updateParts(dt);
       draw(t, dt);
@@ -790,6 +803,46 @@
     });
   }
 
+  // ---------- 设置页：音频状态、音量、节拍校准 ----------
+  var STATE_TXT = { running: "运行中", suspended: "已暂停", interrupted: "被系统打断", closed: "已关闭", none: "未启动" };
+  function openSettings(onClose) {
+    var tmr = 0;
+    var L = SF.layer(SF.appRoot, "设置", { k: "SETTINGS", key: "nianSet", onClose: function () { clearInterval(tmr); if (onClose) onClose(); } });
+    if (!L) return;
+    function pct(v) { return Math.round(v * 100); }
+    async function render() {
+      if (!L.alive) return;
+      var v = SF.sfx.getVol(), cal = await SF.st.get("nian_cal", null);
+      L.body.innerHTML =
+        '<h4>音频</h4><div class="sf-card"><div class="sfrow" style="justify-content:space-between"><span>音频状态</span><b class="sfn-as">' + (STATE_TXT[SF.sfx.state()] || SF.sfx.state()) + "</b></div>" +
+        '<div class="sfrow" style="gap:10px;margin-top:12px"><button class="sfb sm ghost" data-a="test" type="button">测试一声</button><button class="sfb sm ghost" data-a="reset" type="button">重置音频</button></div>' +
+        '<p class="tip" style="margin:10px 0 0">没有声音时，先点「重置音频」，再点「测试一声」。</p></div>' +
+        '<h4>音量</h4><div class="sf-card">' +
+        '<div class="sfn-vr"><span>背景音量</span><b data-l="bgm">' + pct(v.bgm) + '%</b></div><input type="range" class="sfn-rg" data-k="bgm" min="0" max="100" step="5" value="' + pct(v.bgm) + '">' +
+        '<div class="sfn-vr" style="margin-top:12px"><span>命中音量</span><b data-l="hit">' + pct(v.hit) + '%</b></div><input type="range" class="sfn-rg" data-k="hit" min="0" max="100" step="5" value="' + pct(v.hit) + '">' +
+        '<div class="sfrow" style="gap:10px;margin-top:14px"><button class="sfb sm" data-a="prev" type="button">试听</button><button class="sfb sm ghost" data-a="vdef" type="button">恢复默认音量</button></div></div>' +
+        '<h4>节拍校准</h4><div class="sf-card"><div class="sfrow" style="justify-content:space-between;gap:12px"><span class="tip" style="margin:0">' + (cal ? "已校准 · 延迟 " + cal.offset + " ms" : "未校准 · 使用默认值") + '</span><button class="sfb sm" data-a="cal" type="button">' + (cal ? "重新校准" : "开始校准") + "</button></div>" +
+        (cal ? '<div style="text-align:right;margin-top:6px"><span class="sf-lnk" data-a="calreset">恢复默认</span></div>' : "") + "</div>";
+    }
+    L.body.addEventListener("input", function (e) {
+      var r = e.target.closest(".sfn-rg"); if (!r) return;
+      SF.sfx.setVol(r.dataset.k, +r.value / 100);
+      var lb = L.body.querySelector('[data-l="' + r.dataset.k + '"]'); if (lb) lb.textContent = r.value + "%";
+    });
+    L.body.addEventListener("click", async function (e) {
+      var a = e.target.closest("[data-a]"); if (!a) return;
+      var act = a.dataset.a; SF.audio.unlock();
+      if (act === "test") { if (!SF.sfx.enabled()) SF.toast("音效是关着的，先在首页右上角打开"); else if (!SF.sfx.test()) SF.toast("音频还没起来，再点一次"); }
+      else if (act === "reset") { SF.sfx.reset(); SF.toast("音频已重置，点「测试一声」听一下"); setTimeout(function () { if (L.alive) { var el = L.body.querySelector(".sfn-as"); if (el) el.textContent = STATE_TXT[SF.sfx.state()] || SF.sfx.state(); } }, 400); }
+      else if (act === "prev") { if (!SF.sfx.enabled()) SF.toast("音效是关着的，先在首页右上角打开"); else SF.sfx.preview(); }
+      else if (act === "vdef") { SF.sfx.resetVol(); render(); }
+      else if (act === "cal") calibrate(function () { render(); });
+      else if (act === "calreset") { await SF.st.del("nian_cal"); render(); }
+    });
+    tmr = setInterval(function () { var el = L.body.querySelector(".sfn-as"); if (el) el.textContent = STATE_TXT[SF.sfx.state()] || SF.sfx.state(); }, 500);
+    render();
+  }
+
   // ---------- 菜单 ----------
   SF.nian = {
     mountCard: function (c, m, r) {
@@ -812,9 +865,9 @@
         h += "<h4>中场陪你的 TA</h4>" + (chars.length ? SF.chipRow(chars.map(function (c) { return '<span class="sfchip' + (cid === c.id ? " on" : "") + '" data-c="' + SF.esc(c.id) + '">' + SF.esc(SF.cname(c)) + "</span>"; }).join("")) : '<p class="tip">没有读取到角色，中场就只有年兽表演。</p>');
         if (cid) h += '<div class="sfrow" style="justify-content:space-between;margin-top:2px"><span class="tip" style="margin:0">已有 ' + n + ' 句 TA 的台词</span><span class="sf-lnk" data-a="lines">' + (n ? "重新写 10 句" : "让 TA 写 10 句") + "（AI 1 次）</span></div>";
         h += '<h4>我的纪录 · ' + DIFFS[diff].n + '</h4><div class="sf-card"><div class="sfn-st"><div><small>最高分</small><b>' + b.score + "</b></div><div><small>最高连击</small><b>" + b.combo + "</b></div><div><small>今日局数</small><b>" + rec.today + "/" + LIMIT + "</b></div></div></div>";
-        h += '<h4>节拍校准</h4><div class="sf-card"><div class="sfrow" style="justify-content:space-between;gap:12px"><span class="tip" style="margin:0">' + (cal ? "已校准 · 延迟 " + cal.offset + " ms" : "未校准 · 使用默认值，建议先校准") + '</span><button class="sfb sm" data-a="cal" type="button">' + (cal ? "重新校准" : "开始校准") + "</button></div>" + (cal ? '<div style="text-align:right;margin-top:6px"><span class="sf-lnk" data-a="calreset">恢复默认</span></div>' : "") + "</div>";
         h += '<button class="sfb block" style="margin-top:18px" data-a="play" type="button">开打</button>';
-        h += '<div class="sfn-tips"><span>爆竹抵达年兽的瞬间，点击爆竹或战鼓</span><span>大爆竹需连点两下 · 福袋可抵消一次失误</span><span>每日前 ' + LIMIT + " 局计入战绩</span></div>";
+        h += '<div style="text-align:center;margin-top:10px"><span class="sf-lnk" data-a="settings">设置 · 音量与校准</span></div>';
+        h += '<div class="sfn-tips">' + (cal ? "" : "<span>尚未校准节拍，建议先到「设置」里校准</span>") + '<span>爆竹抵达年兽的瞬间，点击屏幕任意位置</span><span>大爆竹需连点两下 · 福袋可抵消一次失误</span><span>每日前 ' + LIMIT + " 局计入战绩</span></div>";
         if (rec.recent.length) h += "<h4>最近 " + rec.recent.length + ' 局</h4><div class="sf-card">' + rec.recent.map(function (x) {
           return '<div class="sfr-i"><div><small>' + fmt(x.t) + " · " + (DIFFS[x.diff] || {}).n + (x.win ? " · 吓跑了" : "") + "</small><p>" + x.score + " 分 · " + x.combo + " 连击 · 评级 " + x.grade + "</p></div></div>";
         }).join("") + "</div>";
@@ -840,12 +893,12 @@
           } catch (err) { SF.toast("失败：" + (err.message || err)); }
           busy = false; render();
         }
-        else if (a.dataset.a === "cal") calibrate(async function () { cal = await SF.st.get("nian_cal", null); render(); });
-        else if (a.dataset.a === "calreset") { await SF.st.del("nian_cal"); cal = null; render(); }
+        else if (a.dataset.a === "settings") openSettings(async function () { cal = await SF.st.get("nian_cal", null); render(); });
         else if (a.dataset.a === "play") {
           SF.audio.unlock();
           var char = chars.filter(function (c) { return c.id === cid; })[0] || null;
           rec.lastDiff = diff; rec.lastChar = cid; await SF.st.set("nian", rec);
+          cal = await SF.st.get("nian_cal", null);
           startGame({ diff: diff, char: char, lines: (cid && lines[cid]) || [], offset: cal ? cal.offset : null }, async function () { rec = await load(); render(); });
         }
       });
@@ -857,6 +910,8 @@
 .sfn-st{display:flex;justify-content:space-around;text-align:center}
 .sfn-st small{display:block;font-size:10.5px;letter-spacing:.2em;color:var(--k);margin-bottom:6px}
 .sfn-st b{font:300 28px/1.1 -apple-system,"PingFang SC",sans-serif;color:var(--big);font-variant-numeric:tabular-nums}
+.sfn-vr{display:flex;justify-content:space-between;font-size:13px;color:var(--ctx);margin-bottom:6px}.sfn-vr b{font-weight:600;color:var(--big)}
+.sfn-rg{width:100%;accent-color:var(--acc)}
 .sfn-tips{margin-top:12px;text-align:center}
 .sfn-tips span{display:block;font-size:12px;line-height:1.9;letter-spacing:.06em;color:var(--k)}
 .sfn-cal{display:flex;justify-content:center;margin:18px 0 8px}
@@ -873,6 +928,7 @@
 .sfn-bl div{height:9px;border-radius:5px;background:rgba(255,255,255,.14);overflow:hidden}.sfn-bl i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ff5b3a,#ffb35a);transition:width .25s}
 .sfn-sc{text-align:right}.sfn-sc b{display:block;font:300 24px/1 -apple-system,sans-serif;color:#ffd77a;font-variant-numeric:tabular-nums}.sfn-sc small{font-size:11px;color:rgba(255,243,220,.7)}
 .sfn-prot{position:absolute;left:0;right:0;top:calc(62px + env(safe-area-inset-top));z-index:5;text-align:center;font-size:12px;color:#ffd77a;opacity:0;transition:opacity .3s;pointer-events:none}.sfn-prot.on{opacity:1}
+.sfn-hint{position:absolute;left:10%;right:10%;top:56%;z-index:8;padding:10px 14px;border-radius:14px;text-align:center;font-size:14px;background:rgba(36,10,20,.82);border:1px solid rgba(255,215,122,.5);color:#fff3dc;opacity:0;transition:opacity .25s;pointer-events:none}.sfn-hint.on{opacity:1}
 .sfn-ban{position:absolute;left:0;right:0;top:44%;z-index:6;text-align:center;font:600 28px/1.2 "Songti SC","STSong",serif;letter-spacing:.3em;color:#ffe29a;text-shadow:0 0 18px rgba(255,150,80,.8);opacity:0;pointer-events:none}
 .sfn-ban.on{animation:sfnBan 1.2s ease-out}
 @keyframes sfnBan{0%{opacity:0;transform:scale(.7)}18%{opacity:1;transform:scale(1.05)}70%{opacity:1}100%{opacity:0;transform:scale(1)}}

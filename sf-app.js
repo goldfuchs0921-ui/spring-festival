@@ -94,7 +94,7 @@
       if (window.ResizeObserver) { S.ro = new ResizeObserver(layout); S.ro.observe(view); }
       loadScene(true);
 
-      root.addEventListener("pointerdown", function () { SF.audio.unlock(); }, { once: true });
+      root.addEventListener("pointerdown", function () { SF.audio.unlock(); });
       root.querySelector(".sf-back").onclick = function () { try { roche.ui.closeApp(); } catch (e) {} };
       var snd = root.querySelector(".sf-snd");
       function paintSnd() { var on = SF.sfx && SF.sfx.enabled(); snd.textContent = on ? "♪" : "静"; snd.classList.toggle("off", !on); }
