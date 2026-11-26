@@ -4,7 +4,7 @@
   // 入口位置：box = [左, 上, 右, 下]，单位是场景图的像素（按 1220×2576 的基准量的）；tag = 标签在入口框里的位置
   var SPOTS = [
     { id: "watch", label: "守岁", en: "VIGIL", box: [340, 760, 580, 990], act: function () { return SF.watch.open(); } },
-    { id: "stage", label: "春晚", en: "GALA", box: [780, 765, 1200, 1095], tag: [.45, .62], locked: 1 },
+    { id: "stage", label: "春晚", en: "GALA", box: [780, 765, 1200, 1095], tag: [.45, .62], act: function () { return SF.gala.open(); } },
     { id: "tree", label: "年度回忆", en: "MEMORIES", box: [15, 980, 455, 1335], tag: [.62, .4], locked: 1 },
     { id: "drum", label: "打年兽", en: "BEAT NIAN", box: [450, 1125, 845, 1315], act: function () { return SF.nian.open(); } },
     { id: "stall", label: "红包", en: "RED PACKET", box: [905, 1235, 1175, 1425], tag: [.1, .5], act: function () { return SF.rp.openStall(); } },
