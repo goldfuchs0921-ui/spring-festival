@@ -187,6 +187,8 @@
     shh: function () { if (ready()) noise(ctx.currentTime, 0.07, "highpass", 3500, 6500, 0.05); },
     save: function () { if (ready()) notes([659, 880, 1175], 0.1, 0.13, 0.5); },
     tap: function () { if (ready()) tone(700, ctx.currentTime, 0.07, "sine", 0.07, 520); },
+    // 说话哔哔声：春晚台词一个字响一声，f 是音高，d 是时长（秒）
+    blip: function (f, d) { if (ready()) tone(f, ctx.currentTime, d || 0.06, "triangle", 0.11, f * 0.96, true); },
     // ---- 打年兽用 ----
     hush: function () {
       if (!ctx || !master) return; var t = ctx.currentTime;
