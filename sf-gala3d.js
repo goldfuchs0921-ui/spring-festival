@@ -301,7 +301,7 @@
         bb.setMatrixAt(i, place(ALL[i], r, [0, 1.17, 0.31]));
         hh.setMatrixAt(i, occ[r + "," + ALL[i]] ? headMx[r][i] : ZERO); hh.setColorAt(i, new T.Color(hair[hash(r * 7 + ALL[i]) % hair.length]));
       }
-      bb.instanceMatrix.needsUpdate = true; hh.instanceMatrix.needsUpdate = true; scene.add(bb); scene.add(hh); rowBack.push(bb); rowHead.push(hh);
+      bb.instanceMatrix.needsUpdate = true; hh.instanceMatrix.needsUpdate = true; if (hh.instanceColor) hh.instanceColor.needsUpdate = true; scene.add(bb); scene.add(hh); rowBack.push(bb); rowHead.push(hh);
     }
     shared.forEach(function (p, pi) {
       var mesh = new T.InstancedMesh(p.g, p.m, sharedMats[pi].length);

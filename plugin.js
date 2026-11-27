@@ -4,10 +4,10 @@
 (function () {
   "use strict";
   var BASE = "https://raw.githubusercontent.com/goldfuchs0921-ui/spring-festival/main/";
-  var VER = "1.8.0";
+  var VER = "1.9.0";
   var MODULES = [
     "sf-data.js", "sf-core.js", "sf-sfx.js", "sf-fireworks.js", "sf-fortune.js",
-    "sf-redpacket.js", "sf-papercut.js", "sf-couplets.js", "sf-riddle.js", "sf-nian.js", "sf-gala.js", "sf-watch.js", "sf-test.js", "sf-app.js"
+    "sf-redpacket.js", "sf-papercut.js", "sf-couplets.js", "sf-riddle.js", "sf-nian.js", "sf-gala3d.js", "sf-gala.js", "sf-watch.js", "sf-test.js", "sf-app.js"
   ];
 
   var SF = (window.__SF = { BASE: BASE, VER: VER, loadError: null });

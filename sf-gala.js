@@ -1,4 +1,5 @@
-/* 自制春晚 v1.8：排节目单 → 3D 剧院选座位 → 头像上台表演（走位 + 特效）→ 弹幕 / 偷跑吐槽 / 角色反应 → 存档回看。
+/* 自制春晚 v1.9：画面用 three.js 的 3D 剧院（sf-gala3d.js），加载不了就自动用下面的 2D 备用画面。
+ * 自制春晚（旧说明）v1.8：排节目单 → 3D 剧院选座位 → 头像上台表演（走位 + 特效）→ 弹幕 / 偷跑吐槽 / 角色反应 → 存档回看。
  * 剧院是代码里的真 3D 透视（没有图片）：墙上的字、观众、椅子都贴在剧院里，视角变了会一起歪。
  * 想加预设节目：往 PRESET 里加 { name, kind, n(演员数), blurb, L:[[演员序号,"台词","特效(可省)"],...] }，台词里 {0} {1} 会换成演员名。
  * 想加路人弹幕：往 NPC 里加句子。特效名见下面 CUES。 */
@@ -219,31 +220,60 @@
   // ---------- 放映：3D 剧院 ----------
   var G = null;
 
+  // three.js 只加载一次：先找仓库里的 three.min.js，再试 CDN；都失败就返回失败，春晚自动改用 2D 画面
+  function ensureThree() {
+    if (window.THREE) return Promise.resolve(window.THREE);
+    if (SF.threeFail) return Promise.reject(SF.threeFail);
+    if (SF.threeP) return SF.threeP;
+    function viaFetch(url) {
+      return fetch(url).then(function (r) { if (!r.ok) throw new Error("three " + r.status); return r.text(); }).then(function (code) {
+        return new Promise(function (res, rej) {
+          var u = URL.createObjectURL(new Blob([code + "\n//# sourceURL=three.min.js"], { type: "text/javascript" })), sc = document.createElement("script");
+          sc.onload = function () { URL.revokeObjectURL(u); sc.remove(); window.THREE ? res(window.THREE) : rej(new Error("no THREE")); };
+          sc.onerror = function () { URL.revokeObjectURL(u); sc.remove(); rej(new Error("three script")); };
+          sc.src = u; document.head.appendChild(sc);
+        });
+      });
+    }
+    function viaTag(url) {
+      return new Promise(function (res, rej) {
+        var sc = document.createElement("script");
+        sc.onload = function () { window.THREE ? res(window.THREE) : rej(new Error("no THREE")); };
+        sc.onerror = function () { rej(new Error("three cdn")); };
+        sc.src = url; document.head.appendChild(sc);
+      });
+    }
+    var timeout = new Promise(function (_, rej) { setTimeout(function () { rej(new Error("three timeout")); }, 20000); });
+    SF.threeP = Promise.race([viaFetch(SF.BASE + "three.min.js?v=" + SF.VER).catch(function () { return viaTag("https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"); }), timeout])
+      .catch(function (e) { SF.threeP = null; SF.threeFail = e; throw e; });
+    return SF.threeP;
+  }
+
   function play(show, startProg) {
     var root = SF.appRoot; if (!root || G) return;
     startProg = startProg || 0;
     var ov = SF.h("div", "sfg-g"); ov.style.zIndex = SF.zTop();
-    ov.innerHTML = '<canvas class="sfg-cv"></canvas>' +
-      '<div class="sfg-top"><button class="sfg-x" type="button">✕</button><div class="sfg-now"><small>新春晚会</small><b></b></div><button class="sfg-bt" data-a="seat" type="button">座位</button></div>' +
+    ov.innerHTML = '<div class="sfg-top"><button class="sfg-x" type="button">✕</button><div class="sfg-now"><small>新春晚会</small><b></b></div><button class="sfg-bt" data-a="seat" type="button">座位</button></div>' +
       '<div class="sfg-ban"></div><div class="sfg-sub"><small></small><p></p></div>' +
-      '<div class="sfg-wait"><button class="sfb" data-a="start" type="button">开　演</button><p>先点右上角「座位」挑个位子，选好再开演</p></div>' +
+      '<div class="sfg-wait"><button class="sfb" data-a="start" type="button" disabled>开　演</button><p>剧院准备中…</p></div>' +
       '<div class="sfg-bar"><button class="sfg-pz" data-a="pause" type="button" style="display:none">⏸</button><input type="text" maxlength="20" placeholder="发条弹幕…"><button class="sfb sm" data-a="send" type="button">发送</button></div>' +
       '<div class="sfg-end"><small>THE END</small><h3>新春快乐</h3><p>春晚到此结束，谢谢观看</p><div class="sfg-eb"><button class="sfb" data-a="again" type="button">再看一遍</button><button class="sfb ghost" data-a="back" type="button">返回</button></div></div>';
     root.appendChild(ov);
-    var cv = ov.querySelector(".sfg-cv"), g = cv.getContext("2d");
+    var cvA = null, cvB = null, g = null, g3 = null;
     function $(s) { return ov.querySelector(s); }
     var W = 0, H = 0, FOC = 1, HY = 0, dpr = 1, cP = [0, 0, 0], cF = [0, 0, -1], cR = [1, 0, 0], cU = [0, 1, 0];
     var seat0 = "4,1";
     var me = G = {
-      stop: false, paused: false, state: "wait", seat: seat0, P: eyeOf(seat0), Pt: eyeOf(seat0), lx: 0, ly: 0, drag: false, open: 0, openT: 0,
+      stop: false, paused: false, ready: false, gl: false, state: "wait", seat: seat0, P: eyeOf(seat0), Pt: eyeOf(seat0), P3: null, Pt3: null, yaw: 0, pit: 0, lx: 0, ly: 0, drag: false, open: 0, openT: 0,
       lb: 0.5, kick: 0, lightK: 0.5, mood: [255, 215, 150], moodT: [255, 215, 150], spot: 0, spotT: 0, steps: [], si: -1, stT: 0, cur: null, sk: "", prog: null, pi: 0,
       actors: [], speaker: null, dans: [], lane: [], parts: [], sneakO: null, applause: 0, npcT: 3, burst: 0, burstT: 0, t: 0, av: {}, rec: [], ended: false,
       dTrig: {}, laughAt: {}, sneakAt: -1, seatL: null, hy: 0.46, typ: null, fxs: [], wp: [], box: { rise: 0, cloth: 0, x: 0, lift: 0 }, flash: 0, shake: 0,
-      dimT: 0, spotOnlyT: 0, spotOnlyId: null, laugh: {}, guestSeat: {}, lion: null, lastF: 0
+      dimT: 0, spotOnlyT: 0, spotOnlyId: null, laugh: {}, guestSeat: {}, lion: null, lastF: 0, acv: {}, gcv: {}, clothCv: null
     };
     function nm(id) { return nameIn(show.roster, id); }
     function guard(f) { try { f(); } catch (e) { /* 音效/特效出错不影响放映 */ } }
     function sfx(name, a, b) { guard(function () { if (SF.sfx && SF.sfx[name]) SF.sfx[name](a, b); }); }
+    function rowOf(key) { return BOX[key] ? -1 : +String(key).split(",")[0]; }
 
     SF.chars().then(function (cs) {
       show.roster.forEach(function (r) {
@@ -264,17 +294,18 @@
     })();
 
     function resize() {
+      if (!cvA) return;
       dpr = Math.min(window.devicePixelRatio || 1, 2);
-      W = cv.clientWidth; H = cv.clientHeight;
-      cv.width = W * dpr; cv.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      W = cvA.clientWidth; H = cvA.clientHeight;
+      if (me.gl) { g3.resize(W, H, dpr); cvB.width = W * dpr; cvB.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0); }
+      else { cvA.width = W * dpr; cvA.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0); }
       FOC = Math.min(W * 0.82, H * 1.2);
     }
-    resize();
     var onRs = function () { resize(); }; window.addEventListener("resize", onRs);
     var onVis = function () { if (document.hidden && me.state === "run" && !me.paused && !me.ended) setPause(true); };
     document.addEventListener("visibilitychange", onVis);
 
-    // ----- 3D 基础 -----
+    // ----- 2D 画法的 3D 基础（备用画面用） -----
     function toCam(p) {
       var dx = p[0] - cP[0], dy = p[1] - cP[1], dz = p[2] - cP[2];
       return [dx * cR[0] + dy * cR[1] + dz * cR[2], dx * cU[0] + dy * cU[1] + dz * cU[2], dx * cF[0] + dy * cF[1] + dz * cF[2]];
@@ -304,9 +335,9 @@
     function rectZ(x1, y1, x2, y2, z, b, k) { poly([[x1, y1, z], [x2, y1, z], [x2, y2, z], [x1, y2, z]], lit(b, (x1 + x2) / 2, (y1 + y2) / 2, z, k)); }
     function rectX(x, z1, z2, y1, y2, b, k) { poly([[x, y1, z1], [x, y1, z2], [x, y2, z2], [x, y2, z1]], lit(b, x, (y1 + y2) / 2, (z1 + z2) / 2, k)); }
     function rectY(y, x1, x2, z1, z2, b, k) { poly([[x1, y, z1], [x2, y, z1], [x2, y, z2], [x1, y, z2]], lit(b, (x1 + x2) / 2, y, (z1 + z2) / 2, k)); }
-    // 把平面内的内容贴到墙上：在平面里 1 单位 = 1 米，x 向右 y 向下；视角变了会跟着歪
+    // 把平面内的内容贴到墙上：平面里 1 单位 = 1 米，x 向右、y 向下；视角变了会跟着歪
     function plane(x, y, z, fn) {
-      var c0 = toCam([x, y, z]), cu = toCam([x + 1, y, z]), cv2 = toCam([x, y + 1, z]);
+      var c0 = toCam([x, y, z]), cu = toCam([x + 1, y, z]), cv2 = toCam([x, y - 1, z]);
       if (c0[2] < 0.6 || cu[2] < 0.3 || cv2[2] < 0.3) return;
       var p0 = scr(c0), pu = scr(cu), pv = scr(cv2);
       g.save(); g.transform(pu[0] - p0[0], pu[1] - p0[1], pv[0] - p0[0], pv[1] - p0[1], p0[0], p0[1]);
@@ -324,8 +355,14 @@
       return o;
     }
     function actorOf(id) { for (var i = 0; i < me.actors.length; i++) if (me.actors[i].id === id) return me.actors[i]; return null; }
+    // 游戏坐标 → 屏幕 [x, y, 每米多少像素]（两种画面通用）
+    function projG(x, y, z) {
+      if (me.gl) return g3.projectGame(x, y, z);
+      var c = toCam([x, y, z]); if (c[2] < 0.5) return null;
+      var s = scr(c); return [s[0], s[1], FOC / c[2]];
+    }
 
-    // ----- 世界粒子（烟雾、火花、烟花、音符、红包、文字）-----
+    // ----- 世界粒子（烟雾、火花、烟花、音符、红包、文字） -----
     function wp(o) { if (me.wp.length > 420) me.wp.shift(); o.l = o.life; me.wp.push(o); }
     function puff(x, y, z) {
       for (var i = 0; i < 9; i++) wp({ k: "smoke", x: x + rnd(-0.4, 0.4), y: y + rnd(-0.3, 0.3), z: z + rnd(-0.2, 0.2), vx: rnd(-1, 1), vy: rnd(0.4, 1.4), vz: 0, g: 0, life: rnd(0.8, 1.4), s: rnd(0.5, 0.9), c: "255,255,255" });
@@ -335,8 +372,8 @@
     function burstW(x, y, z, col) {
       for (var i = 0; i < 46; i++) { var a = Math.random() * 6.283, v = rnd(2, 5), b = Math.random() * 3.1416 - 1.57; wp({ k: "dot", x: x, y: y, z: z, vx: Math.cos(a) * v * Math.cos(b), vy: Math.sin(b) * v + 0.5, vz: Math.sin(a) * v * 0.3, g: 3, life: rnd(1, 1.8), s: rnd(0.06, 0.12), c: col }); }
     }
-    function textW(txt, x, y, z, s, col, life) { wp({ k: "txt", x: x, y: y, z: z, vx: 0, vy: 0.9, vz: 0, g: 0, life: life || 1.4, s: s || 0.6, c: col || "255,230,150", txt: txt }); }
-    function headPos(a) { return [a.x, 1.7 + 1.4 * a.sc + a.dy, a.z]; }
+    function textW(txt, x, y, z, s, col, life, s3) { wp({ k: "txt", s3: !!s3, x: x, y: y, z: z, vx: 0, vy: 0.9, vz: 0, g: 0, life: life || 1.4, s: s || 0.6, c: col || "255,230,150", txt: txt }); }
+    function headPos(a) { return [a.x, 1.7 + 1.0 * a.sc + a.dy, a.z]; }
 
     // ----- 演员 -----
     function mkActor(id, x, z, tx, idx) {
@@ -373,12 +410,10 @@
         var ot = o.o; if (ot && ot !== a) { puff(ot.x, 2.6, ot.z); }
         sfx("tap");
       }
-      else if (k === "lion") { a.lion = { role: "head" }; o.o.lion = { role: "tail" }; me.lion = { a: a, t: o.o, t0: 0, eaten: false, lx: 0 }; snd(function (S, t) { for (var i = 0; i < 8; i++) { var w = t + i * 0.24; if (i % 2 === 0) S.kick(w, 1); else S.snare(false, w); S.hat(true, w); } S.gong(t); }); }
+      else if (k === "lion") { a.lion = { role: "head" }; o.o.lion = { role: "tail" }; me.lion = { a: a, t: o.o, t0: 0, eaten: false }; snd(function (S, t) { for (var i = 0; i < 8; i++) { var w = t + i * 0.24; if (i % 2 === 0) S.kick(w, 1); else S.snare(false, w); S.hat(true, w); } S.gong(t); }); }
       else if (k === "ribbon" || k === "sleeve") { sfx("shh"); }
       else if (k === "sword") { sfx("launch"); }
-      else if (k === "slip") { a.sx = 1; }
-      else if (k === "dash") { sfx("tap"); }
-      else if (k === "spin") { sfx("tap"); }
+      else if (k === "dash" || k === "spin") { sfx("tap"); }
       else if (k === "grow") { sfx("flip"); }
     }
     function endFx(o) {
@@ -387,9 +422,8 @@
       a.sc = 1; a.sx = 1; a.rot = 0; a.dy = 0; a.drop = 0; a.rate = 0; a.mask = -1;
       if (o.o) { o.o.sc = 1; o.o.sx = 1; o.o.dy = 0; o.o.rate = 0; o.o.lion = null; }
       if (o.k === "lion") { a.lion = null; me.lion = null; }
-      if (o.k === "swap") { me.box.rise = 0; me.box.cloth = 0; }
+      if (o.k === "swap") { me.box.rise = 0; me.box.cloth = 0; me.box.lift = 0; if (o.o) o.o.x = o.o.bx; }
       if (o.k === "freeze") a.frozen = 0;
-      if (o.k === "swap" && o.o) { o.o.x = o.o.bx; }
     }
     function updateFx(o, dt) {
       var a = o.a, t = o.t, p = t / o.d, k = o.k, ot = o.o, hp = headPos(a);
@@ -408,7 +442,6 @@
       else if (k === "dash") {
         a.rate = 10; var sgn = a.bx >= 0 ? -1 : 1;
         a.tx = p < 0.3 ? sgn * 5 : (p < 0.6 ? -sgn * 5 : a.bx);
-        if (p < 0.6 && !o.s.sw && p > 0.28) { o.s.sw = 1; sfx("tap"); }
       }
       else if (k === "face") {
         var seg = p < 0.1 ? -1 : (p > 0.9 ? -1 : Math.floor((p - 0.1) / 0.8 * 4));
@@ -420,8 +453,8 @@
         if (!o.s.sn) { o.s.sn = 1; sfx("text"); }
       }
       else if (k === "fireworks") {
-        o.s.nt = (o.s.nt || 0) - dt;
-        if (o.s.nt <= 0 && o.s.n < 4 || o.s.n == null) { o.s.n = (o.s.n || 0) + 1; o.s.nt = 0.7; burstW(rnd(-4, 4), rnd(5, 6.2), -7.2, SF.pick(["255,211,107", "255,91,91", "255,143,177", "127,227,255", "185,162,255"])); sfx("launch"); setTimeout(function () { sfx("burst"); }, 350); }
+        o.s.nt = (o.s.nt || 0) - dt; o.s.n = o.s.n || 0;
+        if (o.s.nt <= 0 && o.s.n < 4) { o.s.n++; o.s.nt = 0.7; burstW(rnd(-4, 4), rnd(5, 6.2), -6.0, SF.pick(["255,211,107", "255,91,91", "255,143,177", "127,227,255", "185,162,255"])); sfx("launch"); setTimeout(function () { sfx("burst"); }, 350); }
       }
       else if (k === "swap" && ot) {
         var b = me.box;
@@ -439,14 +472,14 @@
         }
         if (t >= 2.0) b.lift = Math.max(0, b.lift - dt * 3);
         if (t >= 2.0 && t < 2.5 && ot !== a) ot.sc = back((t - 2.0) / 0.5);
-        if (t >= 2.0) { var tgt = ot; if (ot !== a && t > 2.5) { ot.tx = ot.bx; ot.rate = 4; } if (ot === a) { a.sc = back((t - 2.0) / 0.5); a.x = b.x; a.tx = a.bx; a.rate = 4; } }
+        if (t >= 2.0) { if (ot !== a && t > 2.5) { ot.tx = ot.bx; ot.rate = 4; } if (ot === a) { a.sc = back((t - 2.0) / 0.5); a.x = b.x; a.tx = a.bx; a.rate = 4; } }
         if (t >= 3.0 && ot !== a && !o.s.ret) { o.s.ret = 1; a.x = a.bx; a.tx = a.bx; puff(a.x, 2.6, a.z); sfx("packet"); }
         if (t >= 3.0 && ot !== a) a.sc = back((t - 3.0) / 0.4);
       }
       else if (k === "lion" && ot && me.lion) {
         var L = me.lion; L.t0 = t; a.rate = 5; ot.rate = 5;
         var sgn2 = Math.cos(t * 1.6) >= 0 ? 1 : -1;
-        if (t < 1.8) { a.tx = 2.8 * Math.sin(t * 1.6); }
+        if (t < 1.8) a.tx = 2.8 * Math.sin(t * 1.6);
         else if (t < 2.6) a.tx = 0;
         else a.tx = 2.6 * Math.sin((t - 2.6) * 1.8);
         ot.tx = a.x - 1.9 * (t < 2.6 && t >= 1.8 ? 1 : sgn2);
@@ -454,36 +487,79 @@
         if (t >= 2.6 && !L.eaten) { L.eaten = true; me.flash = 0.5; sfx("packet"); for (var q = 0; q < 24; q++) wp({ k: "pkt", x: 0, y: 4.6, z: -3.2, vx: rnd(-3, 3), vy: rnd(1, 5), vz: rnd(-0.5, 0.5), g: 5, life: rnd(1, 1.6), s: 0.22, c: "220,40,40" }); spark(0, 4.6, -3.2, 30, "255,215,110"); snd(function (S, tt) { S.chime(tt); S.chime(tt + 0.1); }); }
       }
     }
-    function drawLionCloth() {
-      var L = me.lion; if (!L) return;
-      var A = L.a._p, B = L.t._p; if (!A || !B) return;
-      var t = me.t;
-      g.save(); g.fillStyle = "#c92a24";
-      g.beginPath(); g.moveTo(A.x - A.r * 0.9, A.y + A.r * 0.2); g.lineTo(A.x + A.r * 0.9, A.y + A.r * 0.2);
-      g.quadraticCurveTo(B.x + B.r * 1.2, A.y + (B.y - A.y) * 0.4 + A.r * 1.4, B.x + B.r * 0.9, B.y + B.r * 0.6);
-      g.lineTo(B.x - B.r * 0.9, B.y + B.r * 0.6);
-      g.quadraticCurveTo(B.x - B.r * 1.2, A.y + (B.y - A.y) * 0.4 + A.r * 1.4, A.x - A.r * 0.9, A.y + A.r * 0.2); g.closePath(); g.fill();
-      g.strokeStyle = "#f2b04a"; g.lineWidth = Math.max(2, A.r * 0.08);
-      for (var i = 1; i < 6; i++) { var u = i / 6, x1 = A.x + (B.x - A.x) * u, y1 = A.y + (B.y - A.y) * u + A.r * (0.4 + 0.8 * Math.sin(u * Math.PI)); g.beginPath(); g.moveTo(x1 - A.r * 0.7 * (1 - u * 0.4), y1 - A.r * 0.15); g.lineTo(x1 + A.r * 0.7 * (1 - u * 0.4), y1 - A.r * 0.15); g.stroke(); }
-      g.restore();
+
+    // ----- 头像、脸谱、狮子布（画在任意画布上：2D 画面和 3D 头像牌子共用） -----
+    function avatarOn(gx, id, x, y, r, al) {
+      var im = me.av[id];
+      gx.save(); gx.globalAlpha *= al; gx.beginPath(); gx.arc(x, y, r, 0, 7); gx.clip();
+      if (im) {
+        var iw = im.naturalWidth || r * 2, ih = im.naturalHeight || r * 2, kk = Math.max(r * 2 / iw, r * 2 / ih);
+        gx.drawImage(im, x - iw * kk / 2, y - ih * kk / 2, iw * kk, ih * kk);
+      } else {
+        gx.fillStyle = "#f2b394"; gx.fillRect(x - r, y - r, r * 2, r * 2);
+        gx.fillStyle = "#7a2418"; gx.font = "700 " + r + 'px "PingFang SC",sans-serif'; gx.textAlign = "center"; gx.textBaseline = "middle"; gx.fillText(nm(id).slice(0, 1), x, y + 2);
+      }
+      gx.restore();
     }
-    function drawMask(x, y, r, idx) {
+    function avatarAt(id, x, y, r, al) { avatarOn(g, id, x, y, r, al); }
+    function maskOn(gx, x, y, r, idx) {
       var pal = [["#c8202b", "#ffd96a", "#1a0a0a"], ["#2f6cc4", "#ffffff", "#0d1a33"], ["#e8b64c", "#c8202b", "#3a1a0a"], ["#1d1d22", "#ffd96a", "#ffffff"]][idx % 4];
-      g.fillStyle = pal[0]; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
-      g.fillStyle = pal[1];
-      g.beginPath(); g.moveTo(x, y - r * 0.9); g.lineTo(x + r * 0.22, y - r * 0.55); g.lineTo(x, y - r * 0.25); g.lineTo(x - r * 0.22, y - r * 0.55); g.closePath(); g.fill();
-      g.beginPath(); g.ellipse(x - r * 0.52, y + r * 0.25, r * 0.22, r * 0.34, 0.4, 0, 7); g.ellipse(x + r * 0.52, y + r * 0.25, r * 0.22, r * 0.34, -0.4, 0, 7); g.fill();
-      g.strokeStyle = pal[2]; g.lineWidth = Math.max(2, r * 0.13); g.lineCap = "round";
-      g.beginPath(); g.moveTo(x - r * 0.85, y - r * 0.15); g.quadraticCurveTo(x - r * 0.5, y - r * 0.62, x - r * 0.1, y - r * 0.2); g.moveTo(x + r * 0.85, y - r * 0.15); g.quadraticCurveTo(x + r * 0.5, y - r * 0.62, x + r * 0.1, y - r * 0.2); g.stroke();
-      g.fillStyle = pal[2]; g.beginPath(); g.ellipse(x - r * 0.38, y - r * 0.05, r * 0.17, r * 0.09, 0, 0, 7); g.ellipse(x + r * 0.38, y - r * 0.05, r * 0.17, r * 0.09, 0, 0, 7); g.fill();
-      g.beginPath(); g.moveTo(x, y - r * 0.1); g.lineTo(x - r * 0.1, y + r * 0.35); g.lineTo(x + r * 0.1, y + r * 0.35); g.closePath(); g.fill();
-      g.beginPath(); g.moveTo(x - r * 0.4, y + r * 0.62); g.quadraticCurveTo(x, y + r * 0.8, x + r * 0.4, y + r * 0.62); g.stroke();
+      gx.fillStyle = pal[0]; gx.beginPath(); gx.arc(x, y, r, 0, 7); gx.fill();
+      gx.fillStyle = pal[1];
+      gx.beginPath(); gx.moveTo(x, y - r * 0.9); gx.lineTo(x + r * 0.22, y - r * 0.55); gx.lineTo(x, y - r * 0.25); gx.lineTo(x - r * 0.22, y - r * 0.55); gx.closePath(); gx.fill();
+      gx.beginPath(); gx.ellipse(x - r * 0.52, y + r * 0.25, r * 0.22, r * 0.34, 0.4, 0, 7); gx.ellipse(x + r * 0.52, y + r * 0.25, r * 0.22, r * 0.34, -0.4, 0, 7); gx.fill();
+      gx.strokeStyle = pal[2]; gx.lineWidth = Math.max(2, r * 0.13); gx.lineCap = "round";
+      gx.beginPath(); gx.moveTo(x - r * 0.85, y - r * 0.15); gx.quadraticCurveTo(x - r * 0.5, y - r * 0.62, x - r * 0.1, y - r * 0.2); gx.moveTo(x + r * 0.85, y - r * 0.15); gx.quadraticCurveTo(x + r * 0.5, y - r * 0.62, x + r * 0.1, y - r * 0.2); gx.stroke();
+      gx.fillStyle = pal[2]; gx.beginPath(); gx.ellipse(x - r * 0.38, y - r * 0.05, r * 0.17, r * 0.09, 0, 0, 7); gx.ellipse(x + r * 0.38, y - r * 0.05, r * 0.17, r * 0.09, 0, 0, 7); gx.fill();
+      gx.beginPath(); gx.moveTo(x, y - r * 0.1); gx.lineTo(x - r * 0.1, y + r * 0.35); gx.lineTo(x + r * 0.1, y + r * 0.35); gx.closePath(); gx.fill();
+      gx.beginPath(); gx.moveTo(x - r * 0.4, y + r * 0.62); gx.quadraticCurveTo(x, y + r * 0.8, x + r * 0.4, y + r * 0.62); gx.stroke();
     }
-    // 屏幕上的特效：红绸、水袖、剑光、魔术箱、舞狮的青菜、世界粒子
+    // 舞狮的布身：从狮头 A 拖到狮尾 B（A、B 是 {x,y,r}，单位是这张画布的像素）
+    function clothOn(gx, A, B) {
+      gx.save(); gx.fillStyle = "#c92a24";
+      gx.beginPath(); gx.moveTo(A.x - A.r * 0.9, A.y + A.r * 0.2); gx.lineTo(A.x + A.r * 0.9, A.y + A.r * 0.2);
+      gx.quadraticCurveTo(B.x + B.r * 1.2, A.y + (B.y - A.y) * 0.4 + A.r * 1.4, B.x + B.r * 0.9, B.y + B.r * 0.6);
+      gx.lineTo(B.x - B.r * 0.9, B.y + B.r * 0.6);
+      gx.quadraticCurveTo(B.x - B.r * 1.2, A.y + (B.y - A.y) * 0.4 + A.r * 1.4, A.x - A.r * 0.9, A.y + A.r * 0.2); gx.closePath(); gx.fill();
+      gx.strokeStyle = "#f2b04a"; gx.lineWidth = Math.max(2, A.r * 0.08);
+      for (var i = 1; i < 6; i++) { var u = i / 6, x1 = A.x + (B.x - A.x) * u, y1 = A.y + (B.y - A.y) * u + A.r * (0.4 + 0.8 * Math.sin(u * Math.PI)); gx.beginPath(); gx.moveTo(x1 - A.r * 0.7 * (1 - u * 0.4), y1 - A.r * 0.15); gx.lineTo(x1 + A.r * 0.7 * (1 - u * 0.4), y1 - A.r * 0.15); gx.stroke(); }
+      gx.restore();
+    }
+    // 头像本体（鬃毛、头像、脸谱、金圈、狮嘴、说话光圈），画在原点；hr 是头像半径（像素）
+    function bodyOn(gx, a, hr, t, speaking) {
+      var lionHead = a.lion && a.lion.role === "head", i;
+      if (lionHead) {
+        for (i = 0; i < 14; i++) { var an = i / 14 * 6.283 + Math.sin(t * 6 + i) * 0.06; gx.fillStyle = i % 2 ? "#f2b04a" : "#d9302a"; gx.beginPath(); gx.arc(Math.cos(an) * hr * 1.12, Math.sin(an) * hr * 1.12, hr * 0.34, 0, 7); gx.fill(); }
+        gx.fillStyle = "#ffd77a"; gx.beginPath(); gx.arc(-hr * 0.6, -hr * 1.15, hr * 0.22, 0, 7); gx.arc(hr * 0.6, -hr * 1.15, hr * 0.22, 0, 7); gx.fill();
+        gx.beginPath(); gx.moveTo(-hr * 0.12, -hr * 1.1); gx.lineTo(0, -hr * 1.6); gx.lineTo(hr * 0.12, -hr * 1.1); gx.closePath(); gx.fill();
+      }
+      avatarOn(gx, a.id, 0, 0, hr, 1);
+      if (a.mask >= 0) maskOn(gx, 0, 0, hr, a.mask);
+      gx.strokeStyle = "#ffd77a"; gx.lineWidth = Math.max(2, hr * 0.06); gx.beginPath(); gx.arc(0, 0, hr, 0, 7); gx.stroke();
+      if (lionHead) {
+        var mo = Math.abs(Math.sin(t * 7));
+        gx.fillStyle = "#8e1018"; gx.beginPath(); gx.ellipse(0, hr * 1.02, hr * 0.7, hr * (0.12 + 0.4 * mo), 0, 0, 7); gx.fill();
+        gx.fillStyle = "#fff"; gx.beginPath(); gx.moveTo(-hr * 0.4, hr * 0.9); gx.lineTo(-hr * 0.28, hr * 1.1); gx.lineTo(-hr * 0.16, hr * 0.9); gx.moveTo(hr * 0.16, hr * 0.9); gx.lineTo(hr * 0.28, hr * 1.1); gx.lineTo(hr * 0.4, hr * 0.9); gx.fill();
+      }
+      if (speaking) { gx.strokeStyle = "rgba(255,225,140," + (0.4 + 0.4 * Math.sin(t * 8)) + ")"; gx.lineWidth = 3; gx.beginPath(); gx.arc(0, 0, hr * (1.1 + 0.04 * Math.sin(t * 8)), 0, 7); gx.stroke(); }
+    }
+    // 每个演员当下的大小、高度、跳动（2D 和 3D 画面共用）
+    function actorGeom(a, t) {
+      var kind = me.prog ? me.prog.kind : "", speaking = me.speaker === a.id && me.sk === "line", R = 1.0 * a.sc * (speaking ? 1.06 : 1), bob = 0;
+      if (a.frozen <= 0) {
+        if (speaking) bob = Math.abs(Math.sin(t * 7)) * 0.18;
+        else if ((kind === "歌舞" || kind === "合唱") && me.state === "run" && me.sk === "line") bob = Math.abs(Math.sin(t * 4 + a.idx)) * 0.16;
+        else if (kind === "相声" && me.sk === "line") bob = Math.abs(Math.sin(t * 3 + a.idx)) * 0.07;
+      }
+      if (me.sk === "fin") bob = Math.abs(Math.sin(t * 5 + a.x)) * 0.12;
+      return { R: R, yc: 1.2 + 0.5 + R + bob + a.dy - a.drop, speaking: speaking, dimA: me.spotOnlyT > 0 && me.spotOnlyId !== a.id ? 0.45 : 1 };
+    }
+
+    // 屏幕上的特效：红绸、水袖、剑光、（2D 画面的）魔术箱、舞狮的青菜、世界粒子
     function drawFx(t) {
-      var i, o, p, a, u, ang;
+      var i, ang;
       me.fxs.forEach(function (f) {
-        a = f.a; p = a._p; if (!p) return; var pr = f.t / f.d, al = Math.min(1, pr * 6, (1 - pr) * 4);
+        var a = f.a, p = a._p; if (!p) return; var pr = f.t / f.d, al = Math.min(1, pr * 6, (1 - pr) * 4);
         if (f.k === "ribbon") {
           [-1, 1].forEach(function (dir) {
             var pts = [], n = 28;
@@ -508,9 +584,9 @@
           g.restore();
         }
       });
-      // 魔术箱
+      // 魔术箱（2D 画面；3D 画面里是真的盒子）
       var b = me.box;
-      if (b.rise > 0.01) {
+      if (!me.gl && b.rise > 0.01) {
         var h = 2.4 * b.rise, x = b.x, z = -3.0, y0 = 1.2, hw = 1.1;
         poly([[x - hw, y0, z], [x + hw, y0, z], [x + hw, y0 + h, z], [x - hw, y0 + h, z]], lit([30, 20, 36], x, y0 + h / 2, z, 1.4));
         poly([[x - hw, y0 + h, z - 1], [x + hw, y0 + h, z - 1], [x + hw, y0 + h, z], [x - hw, y0 + h, z]], lit([60, 40, 70], x, y0 + h, z, 1.6));
@@ -524,19 +600,22 @@
       }
       // 舞狮的青菜
       if (me.lion && !me.lion.eaten && me.lion.t0 > 1.0) {
-        var lc = toCam([0, 4.6, -3.2]), lt = toCam([0, 6.4, -3.2]);
-        if (lc[2] > 0.5 && lt[2] > 0.5) {
-          var s1 = scr(lc), s0 = scr(lt), k = FOC / lc[2], sw = Math.sin(t * 5) * k * 0.15;
+        var s1 = projG(0, 4.6, -3.2), s0 = projG(0, 6.4, -3.2);
+        if (s1 && s0) {
+          var k = s1[2], sw = Math.sin(t * 5) * k * 0.15;
           g.strokeStyle = "#e8b64c"; g.lineWidth = 2; g.beginPath(); g.moveTo(s0[0], s0[1]); g.lineTo(s1[0] + sw, s1[1] - k * 0.4); g.stroke();
           g.fillStyle = "#3fae5a"; g.beginPath(); g.ellipse(s1[0] + sw, s1[1] - k * 0.2, k * 0.5, k * 0.28, 0.3, 0, 7); g.fill();
           g.fillStyle = "#d9302a"; rrect(g, s1[0] + sw - k * 0.18, s1[1] - k * 0.1, k * 0.36, k * 0.5, k * 0.05); g.fill();
         }
       }
-      // 世界粒子
+    }
+    // 世界粒子：filter 决定画哪些（2D 画面里，台上的先画，观众席里的在座椅之后再画，前后关系才对）
+    function drawParticles(filter) {
       g.save();
       me.wp.forEach(function (q) {
-        var c = toCam([q.x, q.y, q.z]); if (c[2] < 0.5) return;
-        var s = scr(c), k = FOC / c[2], f = clamp(q.life / q.l, 0, 1);
+        if (filter && !filter(q)) return;
+        var pr = q.s3 ? g3.project3(q.x, q.y, q.z) : projG(q.x, q.y, q.z); if (!pr) return;
+        var s = [pr[0], pr[1]], k = pr[2], f = clamp(q.life / q.l, 0, 1);
         if (q.k === "dot") { g.globalCompositeOperation = "lighter"; g.fillStyle = "rgba(" + q.c + "," + f + ")"; g.beginPath(); g.arc(s[0], s[1], Math.max(1, q.s * k), 0, 7); g.fill(); g.globalCompositeOperation = "source-over"; }
         else if (q.k === "smoke") { var r = q.s * k * (1.6 - f * 0.6), gr = g.createRadialGradient(s[0], s[1], 0, s[0], s[1], r); gr.addColorStop(0, "rgba(" + q.c + "," + (0.35 * f) + ")"); gr.addColorStop(1, "rgba(" + q.c + ",0)"); g.fillStyle = gr; g.fillRect(s[0] - r, s[1] - r, r * 2, r * 2); }
         else if (q.k === "txt") { g.globalAlpha = Math.min(1, f * 2); g.font = "700 " + Math.max(10, q.s * k) + 'px "Songti SC","STSong",serif'; g.textAlign = "center"; g.textBaseline = "middle"; g.lineWidth = 3; g.strokeStyle = "rgba(60,10,10,.6)"; g.strokeText(q.txt, s[0], s[1]); g.fillStyle = "rgb(" + q.c + ")"; g.fillText(q.txt, s[0], s[1]); g.globalAlpha = 1; }
@@ -545,11 +624,10 @@
       g.restore();
     }
 
-    // ----- 剧院 -----
+    // ----- 2D 画面（备用）：剧院 -----
     function drawHall(t) {
       var i, z, sd, q, zs, za, zb;
       g.fillStyle = "#07030a"; g.fillRect(0, 0, W, H);
-      // 地面（观众席有坡度）
       zs = [1.8, Z0 - 0.575]; for (q = Z0 - 0.575 + RZ; q < 18; q += RZ) zs.push(q); zs.push(18);
       for (i = 0; i < zs.length - 1; i++) {
         za = zs[i]; zb = zs[i + 1]; var ya = yf(za), yb = yf(zb), col = i % 2 ? [70, 16, 26] : [62, 14, 22];
@@ -557,7 +635,6 @@
           poly([[s[0], ya, za], [s[1], ya, za], [s[1], yb, zb], [s[0], yb, zb]], lit(s[2], (s[0] + s[1]) / 2, ya, (za + zb) / 2));
         });
       }
-      // 侧墙 + 灯笼窗 + 二楼包厢栏
       for (sd = -1; sd <= 1; sd += 2) {
         var wx = sd * 9;
         for (z = 0; z < 18; z += 2.6) { rectX(wx, z, z + 2.6, 0, 3.3, [60, 26, 20]); rectX(wx, z, z + 2.6, 3.3, 9, [84, 42, 30]); }
@@ -569,13 +646,11 @@
         rectX(sd * 8.2, 0, 18, 3.3, 3.75, [96, 52, 32]);
         rectY(3.75, sd * 8.2, sd * 9, 0, 18, [110, 64, 40]);
       }
-      // 顶棚 + 横梁
       for (z = 0; z < 18; z += 2.6) {
         rectY(9, -9, 9, z, z + 2.6, [66, 38, 24]);
         rectY(8.55, -9, 9, z, z + 0.35, [40, 22, 14]);
         poly([[-9, 8.55, z], [9, 8.55, z], [9, 9, z], [-9, 9, z]], lit([52, 28, 18], 0, 8.8, z));
       }
-      // 吊灯笼
       [[-7, 2], [7, 2], [-7, 8], [7, 8], [-7, 14], [7, 14], [0, 10]].forEach(function (L) {
         var c = toCam([L[0], 7.6, L[1]]); if (c[2] < 0.6) return;
         var p = scr(c), r = FOC * 0.45 / c[2];
@@ -585,10 +660,8 @@
         g.fillStyle = "#c92a24"; g.beginPath(); g.ellipse(p[0], p[1], r * 0.85, r, 0, 0, 7); g.fill();
         g.fillStyle = "#e8b64c"; g.fillRect(p[0] - r * 0.4, p[1] - r * 1.05, r * 0.8, r * 0.18);
       });
-      // 舞台：前沿 + 台面
       rectZ(-6.2, 0, 6.2, 1.2, 1.8, [84, 48, 28]);
       for (z = 1.8, i = 0; z > -8; z -= 1, i++) rectY(1.2, -6.2, 6.2, z - 1, z, i % 2 ? [128, 84, 50] : [138, 92, 56]);
-      // 背景幕（标题放在蓝色横带上，福字徽章抬高，不和头像重叠）
       rectZ(-6.2, 1.2, 6.2, 7.2, -8, [118, 22, 30]);
       for (i = 0; i < 8; i++) rectZ(-6.2 + i * 1.55, 1.2, -6.2 + i * 1.55 + 0.2, 6.4, -7.98, [100, 16, 24]);
       rectZ(-6.2, 6.4, 6.2, 7.2, -8, [30, 76, 120]); rectZ(-6.2, 6.33, 6.2, 6.43, -7.99, [200, 150, 60]);
@@ -599,11 +672,9 @@
       });
       textPlane("福", 0, 5.35, -7.9, 1.2, gold);
       if (show.title) textPlane(show.title, 0, 6.82, -7.9, 0.5, "rgba(255,230,160," + clamp(me.lightK, 0.5, 1) + ")");
-      drawLionCloth();
-      // 台上的人（先画，后面的前幕和台口墙会盖住他们走进走出的部分）
+      if (me.lion && me.lion.a._p && me.lion.t._p) clothOn(g, me.lion.a._p, me.lion.t._p);
       me.actors.slice().sort(function (a, b) { return a.z - b.z; }).forEach(function (a) { drawActor(a, t); });
-      drawFx(t);
-      // 前幕 + 檐幕
+      drawFx(t); drawParticles(function (p) { return !p.s3 && p.z <= 1.5; });
       var wid = 1.1 + (6.2 - 1.1) * (1 - me.open), sd2;
       for (sd2 = -1; sd2 <= 1; sd2 += 2) for (i = 0; i < 9; i++) {
         var xa = sd2 < 0 ? -6.2 + wid * i / 9 : 6.2 - wid * (i + 1) / 9, xb = sd2 < 0 ? -6.2 + wid * (i + 1) / 9 : 6.2 - wid * i / 9;
@@ -611,14 +682,12 @@
       }
       rectZ(-6.2, 6.3, 6.2, 7.2, -0.3, [150, 20, 32], 1.05); rectZ(-6.2, 6.3, 6.2, 6.42, -0.29, [210, 160, 60]);
       for (var fx = -6.2; fx < 6.0; fx += 0.4) rectZ(fx, 6.12, fx + 0.3, 6.3, -0.29, [210, 160, 60], 0.95);
-      // 台口墙 + 金边 + 对联牌 + 横匾（贴在墙上，会跟着视角歪）
       rectZ(-9, 0, -6.45, 9, 0, [78, 36, 26]); rectZ(6.45, 0, 9, 9, 0, [78, 36, 26]); rectZ(-6.45, 7.45, 6.45, 9, 0, [78, 36, 26]);
       rectZ(-6.45, 1.2, -6.2, 7.45, 0.02, [170, 120, 50]); rectZ(6.2, 1.2, 6.45, 7.45, 0.02, [170, 120, 50]); rectZ(-6.45, 7.2, 6.45, 7.45, 0.02, [170, 120, 50]);
       rectZ(-8.3, 2.2, -7.3, 6.6, 0.03, [18, 12, 12], 1); rectZ(7.3, 2.2, 8.3, 6.6, 0.03, [18, 12, 12], 1);
       var UP = "歌声笑语迎新岁", DN = "锣鼓烟花贺吉祥";
       for (i = 0; i < 7; i++) { textPlane(UP.charAt(i), 7.8, 6.2 - i * 0.58, 0.05, 0.46, gold); textPlane(DN.charAt(i), -7.8, 6.2 - i * 0.58, 0.05, 0.46, gold); }
       rectZ(-3, 7.7, 3, 8.7, 0.03, [110, 16, 24], 1.1); textPlane("新春晚会", 0, 8.2, 0.05, 0.8, gold);
-      // 追光
       var kk = clamp(me.lightK - 0.3, 0, 1), m = me.mood, rad = me.spotOnlyT > 0 ? 1.1 : 1.7;
       g.save(); g.globalCompositeOperation = "lighter";
       [-3.8, 0, 3.8].forEach(function (sx, n) {
@@ -627,14 +696,12 @@
         var pool = []; for (var a = 0; a < 18; a++) pool.push([tx + Math.cos(a / 18 * 6.283) * r, 1.22, -4 + Math.sin(a / 18 * 6.283) * r * 0.8]);
         poly(pool, col + (0.1 + 0.1 * kk) + ")", true);
       });
-      // 脚光
       for (var lx = -5.5; lx <= 5.5; lx += 1.1) {
         var fc = toCam([lx, 1.35, 1.7]); if (fc[2] < 0.6) continue;
         var fp = scr(fc), fr = FOC * 0.5 / fc[2], gr2 = g.createRadialGradient(fp[0], fp[1], 0, fp[0], fp[1], fr);
         gr2.addColorStop(0, "rgba(255,225,160," + (0.5 + 0.1 * Math.sin(t * 3 + lx)) * clamp(me.lightK, 0.4, 1) + ")"); gr2.addColorStop(1, "rgba(255,225,160,0)");
         g.fillStyle = gr2; g.fillRect(fp[0] - fr, fp[1] - fr, fr * 2, fr * 2);
       }
-      // 烟雾与舞台光晕
       var sc = toCam([0, 2.4, -3]);
       if (sc[2] > 0.5) {
         var sp = scr(sc), wash = g.createRadialGradient(sp[0], sp[1], 0, sp[0], sp[1], W * 0.7);
@@ -648,62 +715,26 @@
       }
       g.restore();
       drawSeats(t);
-    }
-
-    function avatarAt(id, x, y, r, al) {
-      var im = me.av[id];
-      g.save(); g.globalAlpha = al; g.beginPath(); g.arc(x, y, r, 0, 7); g.clip();
-      if (im) {
-        var iw = im.naturalWidth || r * 2, ih = im.naturalHeight || r * 2, kk = Math.max(r * 2 / iw, r * 2 / ih);
-        g.drawImage(im, x - iw * kk / 2, y - ih * kk / 2, iw * kk, ih * kk);
-      } else {
-        g.fillStyle = "#f2b394"; g.fillRect(x - r, y - r, r * 2, r * 2);
-        g.fillStyle = "#7a2418"; g.font = "700 " + r + 'px "PingFang SC",sans-serif'; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(nm(id).slice(0, 1), x, y + 2);
-      }
-      g.restore();
+      drawParticles(function (p) { return !p.s3 && p.z > 1.5; });
     }
     function drawActor(a, t) {
-      if (a.sc <= 0.02) return;
-      var kind = me.prog ? me.prog.kind : "", speaking = me.speaker === a.id && me.sk === "line", R = 1.4 * a.sc * (speaking ? 1.06 : 1), bob = 0;
-      if (a.frozen <= 0) {
-        if (speaking) bob = Math.abs(Math.sin(t * 7)) * 0.18;
-        else if ((kind === "歌舞" || kind === "合唱") && me.state === "run" && me.sk === "line") bob = Math.abs(Math.sin(t * 4 + a.idx)) * 0.16;
-        else if (kind === "相声" && me.sk === "line") bob = Math.abs(Math.sin(t * 3 + a.idx)) * 0.07;
-      }
-      if (me.sk === "fin") bob = Math.abs(Math.sin(t * 5 + a.x)) * 0.12;
-      var yc = 1.2 + 0.5 + R + bob + a.dy - a.drop, cf = toCam([a.x, 1.2, a.z]); if (cf[2] < 0.5) return;
-      var pf = scr(cf), ph = scr(toCam([a.x, yc, a.z])), k = FOC / cf[2], hr = R * k;
+      if (a.sc <= 0.02) { a._p = null; return; }
+      var gm = actorGeom(a, t), R = gm.R, cf = toCam([a.x, 1.2, a.z]); if (cf[2] < 0.5) { a._p = null; return; }
+      var pf = scr(cf), ph = scr(toCam([a.x, gm.yc, a.z])), k = FOC / cf[2], hr = R * k;
       a._p = { x: ph[0], y: ph[1], r: hr };
-      var dimA = me.spotOnlyT > 0 && me.spotOnlyId !== a.id ? 0.45 : 1;
-      // 脚下的影子和柔光
       g.fillStyle = "rgba(0,0,0,.42)"; g.beginPath(); g.ellipse(pf[0], pf[1], hr * 0.85, hr * 0.2, 0, 0, 7); g.fill();
-      g.save(); g.globalCompositeOperation = "lighter"; g.fillStyle = "rgba(255,215,140," + 0.14 * me.lightK * dimA + ")"; g.beginPath(); g.ellipse(pf[0], pf[1], hr * 1.15, hr * 0.28, 0, 0, 7); g.fill(); g.restore();
-      // 冲刺残影
-      a.trail.forEach(function (tr) { var pp = scr(toCam([tr.x, yc, a.z])); avatarAt(a.id, pp[0], pp[1], hr, 0.28 * (1 - tr.t / 0.35) * dimA); });
-      g.save(); g.translate(ph[0], ph[1]); g.rotate(a.rot + a.tilt); g.scale(a.sx, 1); g.globalAlpha = dimA;
-      if (a.lion && a.lion.role === "head") {
-        for (var i = 0; i < 14; i++) { var an = i / 14 * 6.283 + Math.sin(t * 6 + i) * 0.06; g.fillStyle = i % 2 ? "#f2b04a" : "#d9302a"; g.beginPath(); g.arc(Math.cos(an) * hr * 1.12, Math.sin(an) * hr * 1.12, hr * 0.34, 0, 7); g.fill(); }
-        g.fillStyle = "#ffd77a"; g.beginPath(); g.arc(-hr * 0.6, -hr * 1.15, hr * 0.22, 0, 7); g.arc(hr * 0.6, -hr * 1.15, hr * 0.22, 0, 7); g.fill();
-        g.beginPath(); g.moveTo(-hr * 0.12, -hr * 1.1); g.lineTo(0, -hr * 1.6); g.lineTo(hr * 0.12, -hr * 1.1); g.closePath(); g.fill();
-      }
-      avatarAt(a.id, 0, 0, hr, 1);
-      if (a.mask >= 0) drawMask(0, 0, hr, a.mask);
-      g.strokeStyle = "#ffd77a"; g.lineWidth = Math.max(2, hr * 0.06); g.beginPath(); g.arc(0, 0, hr, 0, 7); g.stroke();
-      if (a.lion && a.lion.role === "head") {
-        var mo = Math.abs(Math.sin(t * 7));
-        g.fillStyle = "#8e1018"; g.beginPath(); g.ellipse(0, hr * 1.02, hr * 0.7, hr * (0.12 + 0.4 * mo), 0, 0, 7); g.fill();
-        g.fillStyle = "#fff"; g.beginPath(); g.moveTo(-hr * 0.4, hr * 0.9); g.lineTo(-hr * 0.28, hr * 1.1); g.lineTo(-hr * 0.16, hr * 0.9); g.moveTo(hr * 0.16, hr * 0.9); g.lineTo(hr * 0.28, hr * 1.1); g.lineTo(hr * 0.4, hr * 0.9); g.fill();
-      }
+      g.save(); g.globalCompositeOperation = "lighter"; g.fillStyle = "rgba(255,215,140," + 0.14 * me.lightK * gm.dimA + ")"; g.beginPath(); g.ellipse(pf[0], pf[1], hr * 1.15, hr * 0.28, 0, 0, 7); g.fill(); g.restore();
+      a.trail.forEach(function (tr) { var pp = scr(toCam([tr.x, gm.yc, a.z])); avatarAt(a.id, pp[0], pp[1], hr, 0.28 * (1 - tr.t / 0.35) * gm.dimA); });
+      g.save(); g.translate(ph[0], ph[1]); g.rotate(a.rot + a.tilt); g.scale(a.sx, 1); g.globalAlpha = gm.dimA;
+      bodyOn(g, a, hr, t, gm.speaking);
       g.restore();
-      if (speaking) {
-        g.strokeStyle = "rgba(255,225,140," + (0.4 + 0.4 * Math.sin(t * 8)) + ")"; g.lineWidth = 3; g.beginPath(); g.arc(ph[0], ph[1], hr * (1.1 + 0.04 * Math.sin(t * 8)), 0, 7); g.stroke();
-      }
       g.font = "11px sans-serif"; g.fillStyle = "rgba(255,235,190,.9)"; g.textAlign = "center"; g.textBaseline = "top"; g.fillText(nm(a.id), pf[0], pf[1] + 4);
     }
-
     function drawSeats(t) {
+      var pr = rowOf(me.seat);
       for (var r = 0; r < ROWS; r++) {
-        var z = Z0 + r * RZ, y = yf(z);
+        var z = Z0 + r * RZ, y = yf(z), fade = pr >= 0 && (r === pr - 1 || r === pr - 2);
+        g.save(); if (fade) g.globalAlpha = 0.3;
         for (var ci = 0; ci < COLS.length; ci++) {
           var c = COLS[ci], x = c * SX, cm = toCam([x, y + 0.6, z + 0.1]); if (cm[2] < 0.45) continue;
           var k = FOC / cm[2], sc = scr(cm), hw = 0.5 * k; if (sc[0] < -hw * 2 || sc[0] > W + hw * 2) continue;
@@ -726,13 +757,68 @@
           for (var i = 1; i <= 6; i++) { var u = i / 6; pts.push([x + 0.42 - 0.84 * u, y + 0.8 + 0.18 * Math.sin(u * Math.PI), zb]); }
           poly(pts, lit([132, 24, 38], x, y + 0.6, z, 1));
         }
+        g.restore();
       }
+    }
+
+    // ----- 3D 画面（three.js）：把每一帧的状态交给 sf-gala3d.js -----
+    function actorCanvas(a) {
+      var cv = me.acv[a.id];
+      if (!cv) { cv = me.acv[a.id] = document.createElement("canvas"); cv.width = SF.gala3d.AW; cv.height = SF.gala3d.AH; }
+      return cv;
+    }
+    function guestCanvas(id) {
+      var cv = me.gcv[id];
+      if (!cv) { cv = me.gcv[id] = document.createElement("canvas"); cv.width = 128; cv.height = 128; cv._dirty = true; paintGuest(cv, id); }
+      else if (!cv._img && me.av[id]) { cv._img = true; paintGuest(cv, id); cv._dirty = true; }
+      return cv;
+    }
+    function paintGuest(cv, id) {
+      var gx = cv.getContext("2d"); gx.clearRect(0, 0, 128, 128); avatarOn(gx, id, 64, 64, 56, 1);
+      gx.strokeStyle = "#ffd77a"; gx.lineWidth = 7; gx.beginPath(); gx.arc(64, 64, 56, 0, 7); gx.stroke();
+    }
+    function drawGL() {
+      var t = me.t, i;
+      var pos = [me.P3[0] + Math.sin(t * 0.6) * 0.03, me.P3[1] + Math.sin(t * 1.1) * 0.02, me.P3[2]];
+      if (me.shake > 0.02) { pos[0] += (Math.random() - 0.5) * 0.2 * me.shake; pos[1] += (Math.random() - 0.5) * 0.2 * me.shake; }
+      g3.setView(pos, me.yaw, me.pit, (0.46 - me.hy) * H);
+      g3.setCurtain(me.open);
+      g3.setLights(me.lightK, me.mood, me.spot, me.spotOnlyT > 0);
+      g3.beginActors();
+      me.actors.forEach(function (a) {
+        if (a.sc <= 0.02) { a._p = null; return; }
+        var gm = actorGeom(a, t), cv = actorCanvas(a), gx = cv.getContext("2d"), AW = SF.gala3d.AW;
+        gx.clearRect(0, 0, AW, SF.gala3d.AH); gx.save(); gx.translate(160, 150); bodyOn(gx, a, 105, t, gm.speaking); gx.restore();
+        gx.font = "26px sans-serif"; gx.fillStyle = "rgba(255,235,190,.95)"; gx.textAlign = "center"; gx.textBaseline = "middle"; gx.fillText(nm(a.id), 160, 350);
+        var fade = clamp((7.2 - Math.abs(a.x)) / 1.6, 0, 1);
+        g3.setActor(a.id, { x: a.x, y: gm.yc, z: a.z, R: gm.R, sx: a.sx, opacity: gm.dimA * fade * a.al, rot: -(a.rot + a.tilt), canvas: cv });
+        var tp = SF.gala3d.g2t(a.x, gm.yc, a.z), pr = g3.project3(tp[0], tp[1], tp[2]);
+        a._p = pr ? { x: pr[0], y: pr[1], r: gm.R * pr[2] } : null;
+      });
+      g3.endActors();
+      g3.setBox(me.box.rise, me.box.cloth, me.box.lift, me.box.x);
+      var L = me.lion;
+      if (L && L.a.sc > 0.2 && L.t.sc > 0.2) {
+        var A = L.a, B = L.t, gA = actorGeom(A, t), gB = actorGeom(B, t), xM = (A.x + B.x) / 2, yM = (gA.yc + gB.yc) / 2, Wd = Math.abs(A.x - B.x) + 4.4, Hh = Wd / 2, s = 512 / Wd;
+        if (!me.clothCv) { me.clothCv = document.createElement("canvas"); me.clothCv.width = 512; me.clothCv.height = 256; }
+        var cx = me.clothCv.getContext("2d"); cx.clearRect(0, 0, 512, 256);
+        clothOn(cx, { x: 256 + (A.x - xM) * s, y: 128 - (gA.yc - yM) * s, r: gA.R * s }, { x: 256 + (B.x - xM) * s, y: 128 - (gB.yc - yM) * s, r: gB.R * s });
+        g3.setLionCloth(true, me.clothCv, xM, yM, A.z, Wd, Hh);
+      } else g3.setLionCloth(false);
+      for (var key in me.guestSeat) {
+        var id = me.guestSeat[key], ac = actorOf(id), on = !!(ac && ac.sc > 0.2), lg = me.laugh[id] > 0, gc = guestCanvas(id);
+        g3.setSeatEmpty(key, on);
+        g3.setGuest(key, { canvas: gc, visible: !on, dx: lg ? Math.sin(t * 38) * 0.05 : 0, dy: lg ? Math.abs(Math.sin(t * 16)) * 0.1 : 0, dirty: gc._dirty }); gc._dirty = false;
+      }
+      g3.render();
+      g.clearRect(0, 0, W, H);
+      drawFx(t); drawParticles(null); drawOverlay(t);
     }
 
     // ----- 弹幕 / 偷跑 / 彩纸 -----
     var DFONT = '600 15px "PingFang SC","Noto Sans SC",sans-serif';
     function dan(txt, kind, id) {
-      if (!txt) return;
+      if (!txt || !g) return;
       g.font = DFONT;
       var w = g.measureText(txt).width + (kind === "ch" ? 28 : kind === "me" ? 16 : 0), lanes = Math.max(4, Math.floor(H * 0.29 / 26)), best = 0, bt = 1e9, i;
       for (i = 0; i < lanes; i++) { var tl = me.lane[i] == null ? -1e9 : me.lane[i]; if (tl < bt) { bt = tl; best = i; } }
@@ -751,7 +837,11 @@
       if (!w || actorOf(w)) return;
       me.laugh[w] = 2.8;
       var key = null, k; for (k in me.guestSeat) if (me.guestSeat[k] === w) key = k;
-      if (key) { var a = key.split(","), r = +a[0], c = +a[1], z = Z0 + r * RZ; textW("哈哈哈", c * SX, yf(z) + 1.9, z, 0.5, "255,235,170", 1.8); }
+      if (key) {
+        var a = key.split(","), r = +a[0], c = +a[1];
+        if (me.gl) { var sp = SF.gala3d.seat(r, c); textW("哈哈哈", sp.x, sp.T + 2.7, sp.z, 0.5, "255,235,170", 1.8, true); }
+        else { var z = Z0 + r * RZ; textW("哈哈哈", c * SX, yf(z) + 1.9, z, 0.5, "255,235,170", 1.8); }
+      }
       dan("哈哈哈哈哈哈哈哈", "ch", w);
     }
     function wrap(s, maxW) {
@@ -770,8 +860,7 @@
       me.lastF = f; sfx("blip", f, hi ? 0.045 : 0.06);
     }
     function drawOverlay(t) {
-      var vg = g.createRadialGradient(W / 2, H * 0.5, Math.min(W, H) * 0.35, W / 2, H * 0.5, Math.max(W, H) * 0.78);
-      vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.62)"); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+      if (!me.gl) { var vg = g.createRadialGradient(W / 2, H * 0.5, Math.min(W, H) * 0.35, W / 2, H * 0.5, Math.max(W, H) * 0.78); vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.62)"); g.fillStyle = vg; g.fillRect(0, 0, W, H); }
       if (me.flash > 0.02) { g.fillStyle = "rgba(255,246,220," + Math.min(0.6, me.flash * 0.6) + ")"; g.fillRect(0, 0, W, H); }
       me.parts.forEach(function (p) { g.save(); g.translate(p.x, p.y); g.rotate(p.r); g.fillStyle = p.c; g.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); g.restore(); });
       g.font = DFONT; g.textBaseline = "middle"; g.textAlign = "left";
@@ -867,7 +956,7 @@
         me.moodT = (KIND_COL[p.kind] || [255, 215, 150]).slice();
         var xs = layout(p.kind, p.cast.length);
         me.actors = p.cast.map(function (id, k) { var a = mkActor(id, k % 2 ? 9.6 : -9.6, -4, xs[k], k); a.tilt = typeTilt(p.kind, p.cast.length, k); return a; });
-        me.fxs = []; me.lion = null; me.box.rise = 0; me.box.cloth = 0;
+        me.fxs = []; me.lion = null; me.box.rise = 0; me.box.cloth = 0; me.box.lift = 0;
         var L = p.lines.length, m = (p.dan || []).length; me.dTrig = {}; me.laughAt = {};
         (p.dan || []).forEach(function (d, q) { var j = Math.min(L - 1, Math.round((q + 1) * L / (m + 1))); (me.dTrig[j] = me.dTrig[j] || []).push(d); });
         (p.laugh || []).forEach(function (x) { (me.laughAt[x.at] = me.laughAt[x.at] || []).push(x.w); });
@@ -904,7 +993,10 @@
       }
     }
 
-    function setSeat(key) { me.seat = key; me.Pt = eyeOf(key); }
+    function setSeat(key) {
+      me.seat = key; me.Pt = eyeOf(key); me.lx = 0; me.ly = 0; me.yaw = 0; me.pit = 0;
+      if (me.gl) { me.Pt3 = SF.gala3d.eye(key); g3.setSeatFade(rowOf(key)); }
+    }
     function setPause(on) {
       if (me.state !== "run" || me.ended) return; me.paused = on;
       var b = $(".sfg-pz"); b.textContent = on ? "▶" : "⏸";
@@ -935,6 +1027,7 @@
       me.stop = true; cancelAnimationFrame(me.raf);
       window.removeEventListener("resize", onRs); document.removeEventListener("visibilitychange", onVis);
       if (me.seatL && me.seatL.alive) me.seatL.close(true);
+      if (g3) { try { g3.dispose(); } catch (e) { /* 忽略 */ } }
       if (me.rec.length) {
         var rec = me.rec.slice();
         SF.st.get("gala_shows", []).then(function (arr) {
@@ -945,15 +1038,16 @@
       if (ov.parentNode) ov.remove(); G = null;
     }
     function sendDan() {
-      var inp = $(".sfg-bar input"), t = inp.value.trim().slice(0, 20); if (!t) return;
+      var inp = $(".sfg-bar input"), t = inp.value.trim().slice(0, 20); if (!t || !me.ready) return;
       inp.value = ""; dan(t, "me");
       if (me.state === "run" && me.cur) me.rec.push({ k: stepKey(me.cur), t: t });
     }
     ov.addEventListener("click", function (e) {
       var a = e.target.closest("[data-a]"); if (!a) return;
       var act = a.dataset.a; SF.audio.unlock();
-      if (act === "seat") openSeats();
+      if (act === "seat") { if (me.ready) openSeats(); }
       else if (act === "start") {
+        if (!me.ready) return;
         me.state = "run"; $(".sfg-wait").style.display = "none"; $(".sfg-pz").style.display = ""; me.steps = buildSteps(); enter(0);
       }
       else if (act === "pause") setPause(!me.paused);
@@ -967,14 +1061,6 @@
       var was = me.paused; me.paused = true;
       SF.confirm("退出春晚", "确定退出吗？可以在「我的春晚」里回看。").then(function (ok) { if (ok) cleanup(); else me.paused = was; });
     };
-    var px = 0, py = 0;
-    cv.addEventListener("pointerdown", function (e) { me.drag = true; px = e.clientX; py = e.clientY; try { cv.setPointerCapture(e.pointerId); } catch (x) { /* 忽略 */ } });
-    cv.addEventListener("pointermove", function (e) {
-      if (!me.drag) return;
-      me.lx = clamp(me.lx + (e.clientX - px) * 0.02, -5, 5); me.ly = clamp(me.ly - (e.clientY - py) * 0.015, -2.5, 2.5); px = e.clientX; py = e.clientY;
-    });
-    var up = function () { me.drag = false; };
-    cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
 
     // ----- 每帧 -----
     var prev = performance.now();
@@ -983,22 +1069,21 @@
       me.raf = requestAnimationFrame(frame);
       if (!document.body.contains(ov)) { cleanup(); return; }
       var dt = Math.min(0.05, (now - prev) / 1000); prev = now;
-      update(dt); draw();
+      update(dt); if (me.gl) drawGL(); else draw2D();
     }
     function update(dt) {
       var run = me.state === "run" && !me.paused && !me.ended, dt2 = run ? dt : 0, i, kind = me.prog ? me.prog.kind : "";
       me.t += dt;
-      // 灯光
       me.dimT = Math.max(0, me.dimT - dt2); me.spotOnlyT = Math.max(0, me.spotOnlyT - dt2); me.kick = Math.max(0, me.kick - dt * 2.2); me.flash = Math.max(0, me.flash - dt * 2.5); me.shake = Math.max(0, me.shake - dt * 2);
       var tgt = me.state === "wait" ? 0.55 : (me.dimT > 0 ? 0.4 : (me.spotOnlyT > 0 ? 0.55 : 1));
       me.lb += (tgt - me.lb) * Math.min(1, dt * 3); me.lightK = me.lb + me.kick * 0.7;
       for (i = 0; i < 3; i++) me.mood[i] += (me.moodT[i] - me.mood[i]) * Math.min(1, dt * 1.5);
       me.open += (me.openT - me.open) * Math.min(1, dt * 1.1);
       for (i = 0; i < 3; i++) me.P[i] += (me.Pt[i] - me.P[i]) * Math.min(1, dt * 3.5);
-      if (!me.drag) { me.lx *= 1 - Math.min(1, dt * 0.6); me.ly *= 1 - Math.min(1, dt * 0.6); }
+      if (me.gl && me.P3) for (i = 0; i < 3; i++) me.P3[i] += (me.Pt3[i] - me.P3[i]) * Math.min(1, dt * 3.5);
+      if (!me.drag && !me.gl) { me.lx *= 1 - Math.min(1, dt * 0.6); me.ly *= 1 - Math.min(1, dt * 0.6); }
       var hyT = me.seatL && me.seatL.alive ? 0.27 : 0.46; me.hy += (hyT - me.hy) * Math.min(1, dt * 4); HY = H * me.hy;
       me.spot += (me.spotT - me.spot) * Math.min(1, dt * 3);
-      // 演员：走位
       me.actors.forEach(function (a, k) {
         if (a.exit) a.tx = a.ex;
         else if (a.ctrl <= 0) {
@@ -1015,7 +1100,6 @@
         if (a.frozen > 0) a.frozen = Math.max(0, a.frozen - dt2);
         if (!a.ctrl) a.rate = 0;
       });
-      // 特效
       me.fxs = me.fxs.filter(function (o) {
         o.t += dt2;
         if (o.t >= o.d) { endFx(o); return false; }
@@ -1023,7 +1107,6 @@
       });
       me.wp = me.wp.filter(function (q) { q.life -= dt2 || dt * 0.4; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt; q.vy -= q.g * dt; return q.life > 0; });
       for (var key in me.laugh) if (me.laugh[key] > 0) me.laugh[key] = Math.max(0, me.laugh[key] - dt2);
-      // 字幕打字
       typeTick(dt2);
       if (run) {
         me.stT += dt;
@@ -1047,7 +1130,7 @@
         if (sk.age > 5.6) { me.sneakO = null; $(".sfg-sub").classList.remove("dim"); }
       }
     }
-    function draw() {
+    function draw2D() {
       var t = me.t;
       cP = [me.P[0] + Math.sin(t * 0.6) * 0.04, me.P[1] + Math.sin(t * 1.1) * 0.025, me.P[2]];
       var T = [me.lx, 3.0 + me.ly, -3.5], f = [T[0] - cP[0], T[1] - cP[1], T[2] - cP[2]], l = Math.hypot(f[0], f[1], f[2]) || 1;
@@ -1060,8 +1143,41 @@
       drawHall(t); drawOverlay(t); g.restore();
     }
 
-    me.raf = requestAnimationFrame(frame);
-    setTimeout(function () { if (G === me && !me.stop && me.state === "wait") openSeats(); }, 450);
+    // ----- 初始化：先试 3D（three.js），不行就用 2D 备用画面 -----
+    function mkCanvas(cls) { var c = document.createElement("canvas"); c.className = cls; return c; }
+    function init(T) {
+      var c1 = mkCanvas("sfg-cv"), ok = false;
+      ov.insertBefore(c1, ov.firstChild);
+      if (T && SF.gala3d) {
+        try {
+          g3 = SF.gala3d.create(T, c1, { dpr: window.devicePixelRatio || 1, title: show.title, guestKeys: Object.keys(me.guestSeat) }); ok = true;
+        } catch (e) { console.warn("[gala] 3D 画面不可用，改用 2D：", e); g3 = null; }
+      }
+      if (ok) {
+        cvB = mkCanvas("sfg-cv sfg-cv2"); ov.insertBefore(cvB, c1.nextSibling); cvA = c1; g = cvB.getContext("2d"); me.gl = true;
+        me.P3 = SF.gala3d.eye(seat0); me.Pt3 = me.P3.slice();
+      } else {
+        if (T) { c1.remove(); c1 = mkCanvas("sfg-cv"); ov.insertBefore(c1, ov.firstChild); }
+        cvA = c1; g = cvA.getContext("2d"); me.gl = false;
+      }
+      resize();
+      if (me.gl) g3.setSeatFade(rowOf(seat0));
+      var px = 0, py = 0;
+      cvA.addEventListener("pointerdown", function (e) { me.drag = true; px = e.clientX; py = e.clientY; try { cvA.setPointerCapture(e.pointerId); } catch (x) { /* 忽略 */ } });
+      cvA.addEventListener("pointermove", function (e) {
+        if (!me.drag) return;
+        var dx = e.clientX - px, dy = e.clientY - py; px = e.clientX; py = e.clientY;
+        if (me.gl) { me.yaw = clamp(me.yaw - dx * 0.005, -1.75, 1.75); me.pit = clamp(me.pit - dy * 0.004, -0.7, 0.7); }
+        else { me.lx = clamp(me.lx + dx * 0.02, -5, 5); me.ly = clamp(me.ly - dy * 0.015, -2.5, 2.5); }
+      });
+      var up = function () { me.drag = false; };
+      cvA.addEventListener("pointerup", up); cvA.addEventListener("pointercancel", up);
+      me.ready = true;
+      var wb = $(".sfg-wait .sfb"); wb.disabled = false; $(".sfg-wait p").textContent = "先点右上角「座位」挑个位子，选好再开演";
+      prev = performance.now(); me.raf = requestAnimationFrame(frame);
+      setTimeout(function () { if (G === me && !me.stop && me.state === "wait") openSeats(); }, 450);
+    }
+    ensureThree().then(function (T) { return T; }, function () { return null; }).then(function (T) { if (G === me && !me.stop) init(T); });
   }
 
   // ---------- 入口：排节目 / 我的春晚 ----------
@@ -1069,6 +1185,7 @@
     play: play,
     open: async function () {
       var L = SF.layer(SF.appRoot, "自制春晚", { full: true, k: "GALA", key: "gala" });
+      ensureThree().catch(function () { /* 失败就用 2D 备用画面 */ });
       if (!L) return;
       var view = "home", busy = false, chars = [], shows = [], st = { sel: [], n: 5, mode: "preset", pitch: [], pitchText: "", addText: "" }, draft = null;
 
@@ -1210,6 +1327,7 @@
 .sfg-gap{display:block;width:14px}
 .sfg-g{position:absolute;inset:0;background:#07030a;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;font-family:-apple-system,"PingFang SC","Noto Sans SC",sans-serif;color:#fff3dc}
 .sfg-cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.sfg-cv2{pointer-events:none}
 .sfg-top{position:absolute;left:0;right:0;top:0;z-index:5;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 0 max(14px,env(safe-area-inset-left));pointer-events:none}
 .sfg-x,.sfg-bt{pointer-events:auto;flex:0 0 auto;height:36px;min-width:36px;padding:0 12px;border-radius:18px;border:1px solid rgba(255,215,122,.55);background:rgba(36,10,20,.55);color:#ffd77a;font-size:13px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 .sfg-x{padding:0;width:36px;font-size:14px}
