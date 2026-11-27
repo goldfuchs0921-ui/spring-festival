@@ -1,4 +1,5 @@
-/* 春晚的 3D 剧院（three.js）：沿用 1.3.0 的建模（金绢横匾、台毯、帘幕、翼幕、八字墙、扇形看台），整体调亮、更喜庆。
+/* 春晚的 3D 剧院（three.js）：沿用 1.3.0 的建模（金绢横匾、台毯、帘幕、翼幕、八字墙、扇形看台）。
+ * v1.9.1：光照重做——舞台由台口面光 / 顶光 / 追光照亮，观众席保持昏暗；去掉全场自发光和加色光晕，避免光污染。
  * 这里只负责“画面”。台上头像、观众、灯光、魔术箱等，由 sf-gala.js 每帧通过 create() 返回的接口告诉它。
  * 想改亮度：改下面 BRIGHT；想改灯笼数量：改 LANTERNS。 */
 (function (SF) {
@@ -6,7 +7,7 @@
   var CZ = -9.6, SY = 0.72, ROWS = 9;
   var COLS = [-6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6], EXTRA = [-9, -8, -7, 7, 8, 9], ALL = COLS.concat(EXTRA);
   var BOX3 = { BL: [-11.6, 5.4, -0.5], BR: [11.6, 5.4, -0.5], UM: [0, 6.8, 12.4] };
-  var BRIGHT = 1.45;                 // 整体亮度（越大越亮）
+  var BRIGHT = 1.0;                  // 整体亮度（越大越亮）；1.0 为喜庆但不过曝的基准
   var ACW = 320, ACH = 380;          // 台上头像牌子的画布大小；头像圆心在 (160,150)，半径 105
   var LANTERNS = [[-10, -3], [-5, -3], [5, -3], [10, -3], [-10, 2.5], [-5, 2.5], [5, 2.5], [10, 2.5], [-10, 8], [-5, 8], [5, 8], [10, 8], [-10, 13], [-5, 13], [5, 13], [10, 13], [0, 0], [0, 6], [0, 12]];
 
@@ -25,20 +26,20 @@
     var W = 1, H = 1, k;
     var renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(opt.dpr || 1, 1.45));
-    renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15 + 0.2 * BRIGHT;
+    renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.92 + 0.12 * BRIGHT;
     var scene = new T.Scene();
-    scene.background = new T.Color(0x3a1c18); scene.fog = new T.Fog(0x3a1c18, 46, 90);
+    scene.background = new T.Color(0x26130f); scene.fog = new T.Fog(0x26130f, 40, 82);
     var camera = new T.PerspectiveCamera(60, 1, 0.1, 120);
 
-    // ---------- 材质（比 1.3.0 更亮、更红） ----------
+    // ---------- 材质：颜色降一档，明暗交给真实灯光 ----------
     var matCache = {};
     function M(c, r, m) { var key = c + "/" + (r == null ? 0.82 : r) + "/" + (m || 0); if (!matCache[key]) matCache[key] = new T.MeshStandardMaterial({ color: c, roughness: r == null ? 0.82 : r, metalness: m || 0 }); return matCache[key]; }
-    var wall = M(0x84492f), wallPanel = M(0xa65a3a), wood = M(0x80502f), woodMid = M(0xa56a3c), woodLite = M(0xc8905a), dark = M(0x3f2619);
-    var gold = M(0xf0c868, 0.42, 0.45), goldDark = M(0xc09248, 0.5, 0.35), stageFloor = M(0x7a655a);
-    var red = new T.MeshStandardMaterial({ color: 0xb62030, roughness: 0.9, emissive: 0x4a0a12, emissiveIntensity: 0.55, side: T.DoubleSide });
-    var seatBlack = M(0x5a302a), seatRed = new T.MeshStandardMaterial({ color: 0xc8283a, roughness: 0.85, emissive: 0x30080e, emissiveIntensity: 0.5 }), seatRed2 = M(0xee5a6c);
-    var glowMat = new T.MeshBasicMaterial({ color: 0xffc880 });
-    var tierMat = new T.MeshStandardMaterial({ color: 0x75473a, roughness: 0.9, emissive: 0x2c160e, emissiveIntensity: 0.7, side: T.DoubleSide });
+    var wall = M(0x6e3c28), wallPanel = M(0x8c4a30), wood = M(0x6a4028), woodMid = M(0x8f5c34), woodLite = M(0xa87448), dark = M(0x332017);
+    var gold = M(0xd8ad58, 0.5, 0.35), goldDark = M(0xa87e3c, 0.55, 0.3), stageFloor = M(0x625349);
+    var red = new T.MeshStandardMaterial({ color: 0xb22230, roughness: 0.92, emissive: 0x2a060a, emissiveIntensity: 0.22, side: T.DoubleSide });
+    var seatBlack = M(0x4a2822), seatRed = new T.MeshStandardMaterial({ color: 0xba2838, roughness: 0.88, emissive: 0x1c0508, emissiveIntensity: 0.18 }), seatRed2 = M(0xcf4858);
+    var glowMat = new T.MeshBasicMaterial({ color: 0xb98a55 });
+    var tierMat = new T.MeshStandardMaterial({ color: 0x684031, roughness: 0.92, emissive: 0x160b06, emissiveIntensity: 0.18, side: T.DoubleSide });
     var boxGeo = new T.BoxGeometry(1, 1, 1);
     function box(parent, material, pos, scale) { var o = new T.Mesh(boxGeo, material); o.position.set(pos[0], pos[1], pos[2]); o.scale.set(scale[0], scale[1], scale[2]); parent.add(o); return o; }
     function plane(parent, material, w, h, pos, ry) { var o = new T.Mesh(new T.PlaneGeometry(w, h), material); o.position.set(pos[0], pos[1], pos[2]); o.rotation.y = ry || 0; parent.add(o); return o; }
@@ -50,7 +51,7 @@
     }
     var KAI = '"STKaiti","KaiTi","Kaiti SC","Songti SC","Noto Serif SC",serif';
     var goldSilk = tex(512, 128, function (g, w, h) {
-      g.fillStyle = "#c79a40"; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#b3893c"; g.fillRect(0, 0, w, h);
       for (var y = 0; y < h; y += 3) { g.fillStyle = y % 6 ? "rgba(255,238,190,.06)" : "rgba(80,46,12,.06)"; g.fillRect(0, y, w, 1); }
       var l = g.createLinearGradient(0, 0, 0, h); l.addColorStop(0, "rgba(60,30,8,.3)"); l.addColorStop(0.4, "rgba(255,230,160,.12)"); l.addColorStop(0.7, "rgba(255,240,180,.2)"); l.addColorStop(1, "rgba(60,30,8,.3)");
       g.fillStyle = l; g.fillRect(0, 0, w, h);
@@ -58,7 +59,7 @@
       g.fillStyle = "#8f1420"; g.font = "700 76px " + KAI; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("新春晚会", w / 2, h / 2 + 4);
     });
     var carpet = tex(512, 320, function (g, w, h) {
-      g.fillStyle = "#98212c"; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#8a1c27"; g.fillRect(0, 0, w, h);
       for (var i = 0; i < w; i += 18) { g.fillStyle = "rgba(0,0,0,.04)"; g.fillRect(i, 0, 2, h); }
       var vg = g.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, w * 0.6); vg.addColorStop(0, "rgba(255,200,160,.08)"); vg.addColorStop(1, "rgba(0,0,0,.2)"); g.fillStyle = vg; g.fillRect(0, 0, w, h);
       g.strokeStyle = "#e6bd6a"; g.lineWidth = 4; g.strokeRect(18, 18, w - 36, h - 36);
@@ -72,7 +73,7 @@
       g.strokeStyle = "rgba(240,200,120,.95)"; g.lineWidth = 3; g.beginPath(); g.ellipse(w / 2, h / 2, 78, 54, 0, 0, Math.PI * 2); g.stroke();
     });
     var clothTex = tex(512, 512, function (g, w, h) {
-      g.fillStyle = "#b02432"; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#9c2030"; g.fillRect(0, 0, w, h);
       var n = 20, step = w / n;
       for (var i = 0; i < n; i++) {
         var x = i * step, q = Math.sin((i + 0.5) / n * Math.PI * 2 - Math.PI / 2);
@@ -83,7 +84,7 @@
       g.fillStyle = v; g.fillRect(0, 0, w, h);
     });
     var valanceTex = tex(512, 128, function (g, w, h) {
-      g.fillStyle = "#b02432"; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#9c2030"; g.fillRect(0, 0, w, h);
       var n = 44, step = w / n;
       for (var i = 0; i < n; i++) { var x = i * step; g.fillStyle = "rgba(0,0,0,.05)"; g.fillRect(x, 0, step * 0.5, h); g.fillStyle = "rgba(255,215,180,.04)"; g.fillRect(x + step * 0.5, 0, step * 0.3, h); }
       var v = g.createLinearGradient(0, 0, 0, h); v.addColorStop(0, "rgba(0,0,0,.16)"); v.addColorStop(0.3, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.14)"); g.fillStyle = v; g.fillRect(0, 0, w, h);
@@ -102,17 +103,14 @@
         for (var i = 0; i < str.length; i++) g.fillText(str.charAt(i), w / 2, 52 + i * 62);
       });
     }
-    function glowTexture() {
-      return tex(128, 128, function (g, w, h) { var r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, "rgba(255,150,90,.9)"); r.addColorStop(0.35, "rgba(255,110,60,.35)"); r.addColorStop(1, "rgba(255,90,50,0)"); g.fillStyle = r; g.fillRect(0, 0, w, h); });
-    }
     function shadowTexture() {
       return tex(128, 128, function (g, w, h) { var r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, "rgba(0,0,0,.55)"); r.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = r; g.fillRect(0, 0, w, h); });
     }
     function texMat(t) { return new T.MeshStandardMaterial({ map: t, roughness: 0.9, side: T.DoubleSide }); }
-    var goldSilkMat = new T.MeshStandardMaterial({ map: goldSilk, roughness: 0.9, emissive: 0x6a4a18, emissiveIntensity: 0.3, side: T.DoubleSide });
+    var goldSilkMat = new T.MeshStandardMaterial({ map: goldSilk, roughness: 0.92, emissive: 0x3a280e, emissiveIntensity: 0.14, side: T.DoubleSide });
     var carpetMat = texMat(carpet);
-    var valanceMat = new T.MeshStandardMaterial({ map: valanceTex, roughness: 0.95, emissive: 0x2a0508, emissiveIntensity: 0.3, side: T.DoubleSide });
-    var curtainMat = new T.MeshStandardMaterial({ map: clothTex, roughness: 0.95, emissive: 0x3a0810, emissiveIntensity: 0.55, side: T.DoubleSide });
+    var valanceMat = new T.MeshStandardMaterial({ map: valanceTex, roughness: 0.95, emissive: 0x1a0305, emissiveIntensity: 0.1, side: T.DoubleSide });
+    var curtainMat = new T.MeshStandardMaterial({ map: clothTex, roughness: 0.95, emissive: 0x220509, emissiveIntensity: 0.18, side: T.DoubleSide });
     var curtainDeep = new T.MeshStandardMaterial({ map: clothTex, color: 0xb0b0b0, roughness: 0.95, side: T.DoubleSide });
     var medMat = new T.MeshStandardMaterial({ map: medTex, transparent: true, depthWrite: false, roughness: 0.8, side: T.DoubleSide });
 
@@ -135,12 +133,14 @@
     }
 
     // ---------- 一、剧院外壳 ----------
-    var lightsHemi = new T.HemisphereLight(0xffd8b8, 0x6a3a28, 2.1), lightsAmb = new T.AmbientLight(0xffdcb0, 0.8);
+    // 环境光只负责“还能看清轮廓”，亮度主要来自下面几盏有位置的舞台灯
+    var lightsHemi = new T.HemisphereLight(0xf0cba8, 0x503324, 1.18), lightsAmb = new T.AmbientLight(0xffd9ae, 0.30);
     scene.add(lightsHemi, lightsAmb);
-    box(scene, M(0x5a3022), [0, -0.25, -3], [28, 0.5, 34]);
-    box(scene, new T.MeshStandardMaterial({ color: 0x6a1c24, roughness: 0.95, emissive: 0x2a0a0e, emissiveIntensity: 0.5 }), [0, 0.01, 4.5], [1.7, 0.02, 24]);   // 过道红地毯
+    box(scene, M(0x40281e), [0, -0.25, -3], [28, 0.5, 34]);
+    box(scene, new T.MeshStandardMaterial({ color: 0x5c1820, roughness: 0.95, emissive: 0x180508, emissiveIntensity: 0.08 }), [0, 0.01, 4.5], [1.7, 0.02, 24]);   // 过道红地毯
     var ceiling = new T.Group(); scene.add(ceiling);
-    box(ceiling, new T.MeshStandardMaterial({ color: 0x6a432c, roughness: 0.95, emissive: 0x2e1a0c, emissiveIntensity: 0.8 }), [0, 11, -3], [28, 0.45, 34]);
+    // 天花板改为深棕哑光木，不再自发光：仰视时不会被灯打出大片白斑
+    box(ceiling, new T.MeshStandardMaterial({ color: 0x523724, roughness: 0.97, emissive: 0x140c06, emissiveIntensity: 0.16 }), [0, 11, -3], [28, 0.45, 34]);
     box(scene, wall, [-14, 5.35, -3], [0.45, 11, 34]); box(scene, wall, [14, 5.35, -3], [0.45, 11, 34]);
     box(scene, wall, [0, 5.35, -20], [28, 11, 0.45]); box(scene, wall, [0, 5.35, 14], [28, 11, 0.45]);
     var s, z, x;
@@ -153,11 +153,12 @@
         box(scene, glowMat, [s * 13.35 - s * 0.24, 4.45, zz], [0.035, 0.66, 0.23]); box(scene, gold, [s * 13.35 - s * 0.29, 4.82, zz], [0.08, 0.08, 0.31]);
       });
     }
-    for (z = -18; z <= 12; z += 3.4) box(ceiling, woodMid, [0, 10.68, z], [27.4, 0.12, 0.22]);
-    for (x = -13; x <= 13; x += 4.3) box(ceiling, woodMid, [x, 10.68, -3], [0.2, 0.12, 32.5]);
+    var ceilBeam = M(0x7a5232);
+    for (z = -18; z <= 12; z += 3.4) box(ceiling, ceilBeam, [0, 10.68, z], [27.4, 0.12, 0.22]);
+    for (x = -13; x <= 13; x += 4.3) box(ceiling, ceilBeam, [x, 10.68, -3], [0.2, 0.12, 32.5]);
     for (x = -10; x <= 10; x += 2.5) { box(scene, wallPanel, [x, 5.2, -19.72], [2.25, 7.9, 0.08]); box(scene, woodLite, [x - 1.12, 5.2, -19.62], [0.07, 8, 0.1]); }
     box(scene, wood, [0, 9.2, -19.55], [16, 0.18, 0.22]); box(scene, gold, [0, 9.05, -19.52], [10, 0.035, 0.08]);
-    var backWall = new T.MeshStandardMaterial({ color: 0x6a3e2a, roughness: 0.92, emissive: 0x3a2014, emissiveIntensity: 1.0 });
+    var backWall = new T.MeshStandardMaterial({ color: 0x53321f, roughness: 0.94, emissive: 0x1c1008, emissiveIntensity: 0.14 });
     box(scene, backWall, [0, 5.4, 13.74], [27.4, 8.6, 0.16]);
     for (x = -12.4; x <= 12.4; x += 2.48) box(scene, woodMid, [x, 5.4, 13.62], [0.09, 8.2, 0.1]);
     box(scene, wood, [0, 2.4, 13.55], [27, 0.2, 0.24]); box(scene, woodMid, [0, 1.15, 13.6], [27, 2.1, 0.16]); box(scene, woodMid, [0, 9.4, 13.55], [27, 0.14, 0.18]);
@@ -215,12 +216,13 @@
     }
     setCurtain(0);
 
-    // ---------- 五、红灯笼（挂满顶棚，亮着光晕） ----------
-    var lanMat = new T.MeshBasicMaterial({ color: 0xea3a2e }), lanGeo = new T.SphereGeometry(0.42, 10, 8), lanCap = M(0xe8b040, 0.5, 0.3);
+    // ---------- 五、红灯笼（只靠环境光，不加光晕精灵） ----------
+    var lanMat = new T.MeshStandardMaterial({ color: 0xc42c28, roughness: 0.88, emissive: 0x4a0a0a, emissiveIntensity: 0.28 });
+    var lanGeo = new T.SphereGeometry(0.42, 10, 8), lanCap = M(0xc9a052, 0.55, 0.25), lanPole = M(0x5a3a22);
     LANTERNS.forEach(function (p) {
       var ly = 8.3, m = new T.Mesh(lanGeo, lanMat); m.position.set(p[0], ly, p[1]); m.scale.set(1, 1.15, 1); scene.add(m);
       box(scene, lanCap, [p[0], ly + 0.5, p[1]], [0.3, 0.1, 0.3]); box(scene, lanCap, [p[0], ly - 0.52, p[1]], [0.18, 0.08, 0.18]);
-      box(scene, lanCap, [p[0], ly - 0.95, p[1]], [0.05, 0.5, 0.05]); box(scene, woodMid, [p[0], (10.7 + ly + 0.5) / 2, p[1]], [0.03, 10.7 - ly - 0.5, 0.03]);
+      box(scene, lanCap, [p[0], ly - 0.95, p[1]], [0.05, 0.5, 0.05]); box(scene, lanPole, [p[0], (10.7 + ly + 0.5) / 2, p[1]], [0.03, 10.7 - ly - 0.5, 0.03]);
     });
 
     // ---------- 六、观众席：扇形台阶 + 椅子 + 观众的头（实例化，调用次数很少） ----------
@@ -232,13 +234,13 @@
       edge.rotation.x = -Math.PI / 2; edge.position.set(0, h + 0.008, CZ); scene.add(edge);
     }
 
-    // ---------- 七、灯光 ----------
-    var keyL = new T.SpotLight(0xffd8ae, 60, 22, Math.PI / 4.6, 0.95, 1.4); keyL.position.set(-3.2, 8.5, -7.62); keyL.target.position.set(-1.0, 1.3, -10.5);
-    var keyR = new T.SpotLight(0xffd8ae, 60, 22, Math.PI / 4.6, 0.95, 1.4); keyR.position.set(3.2, 8.5, -7.62); keyR.target.position.set(1.0, 1.3, -10.5);
-    var topLight = new T.PointLight(0xffd4a4, 14, 16, 1.6); topLight.position.set(0, 7.2, -10.6);
-    var houseWash = new T.SpotLight(0xe8c49a, 26, 36, Math.PI / 3, 0.95, 1.3); houseWash.position.set(0, 8.8, 12.4); houseWash.target.position.set(0, 1.0, 2);
-    var hallWarm = new T.PointLight(0xffc890, 16, 36, 1.4); hallWarm.position.set(0, 9, 4);
-    var follow = new T.SpotLight(0xffe6b8, 80, 24, Math.PI / 7.5, 0.6, 1.5); follow.position.set(0, 9, -7.5); follow.target.position.set(0, 0.8, -9.8);
+    // ---------- 七、灯光：台口面光 / 舞台顶光 / 追光负责舞台，后墙洗光只给观众席一点轮廓 ----------
+    var keyL = new T.SpotLight(0xffd6a6, 46, 22, Math.PI / 4.8, 0.96, 1.5); keyL.position.set(-3.2, 8.5, -7.62); keyL.target.position.set(-1.0, 1.3, -10.5);
+    var keyR = new T.SpotLight(0xffd6a6, 46, 22, Math.PI / 4.8, 0.96, 1.5); keyR.position.set(3.2, 8.5, -7.62); keyR.target.position.set(1.0, 1.3, -10.5);
+    var topLight = new T.PointLight(0xffd0a0, 11, 15, 1.7); topLight.position.set(0, 7.2, -10.6);
+    var houseWash = new T.SpotLight(0xe8c49a, 12, 34, Math.PI / 3.2, 0.96, 1.4); houseWash.position.set(0, 8.8, 12.4); houseWash.target.position.set(0, 1.0, 2);
+    var hallWarm = new T.PointLight(0xffc890, 6, 24, 1.6); hallWarm.position.set(0, 8.4, 4);
+    var follow = new T.SpotLight(0xffe6b8, 52, 24, Math.PI / 7.5, 0.62, 1.5); follow.position.set(0, 9, -7.5); follow.target.position.set(0, 0.8, -9.8);
     scene.add(keyL, keyL.target, keyR, keyR.target, topLight, houseWash, houseWash.target, hallWarm, follow, follow.target);
 
     // ---------- 八、静态几何按材质合并，调用次数大幅减少 ----------
@@ -294,7 +296,7 @@
         occ[key] = guestKeys[key] ? true : (hash(r * 131 + cc * 17 + 7) % 100 < 62);
         headMx[r].push(place(cc, r, [0, 1.75, 0.0]));
       }
-      var bm = new T.MeshStandardMaterial({ color: 0xcc2c3e, roughness: 0.85, emissive: 0x30080e, emissiveIntensity: 0.5 }), hm = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, emissive: 0x201210, emissiveIntensity: 0.4 });
+      var bm = new T.MeshStandardMaterial({ color: 0xb02434, roughness: 0.88, emissive: 0x1c0508, emissiveIntensity: 0.12 }), hm = new T.MeshStandardMaterial({ color: 0xe4cdb8, roughness: 0.9, emissive: 0x140b08, emissiveIntensity: 0.1 });
       backMats.push(bm); headMats.push(hm);
       var bb = new T.InstancedMesh(geoBack, bm, ALL.length), hh = new T.InstancedMesh(geoHead, hm, ALL.length);
       for (i = 0; i < ALL.length; i++) {
@@ -308,10 +310,6 @@
       sharedMats[pi].forEach(function (m, mi) { mesh.setMatrixAt(mi, m); }); mesh.instanceMatrix.needsUpdate = true; scene.add(mesh);
     });
 
-    // 灯笼光晕（加色精灵，不参与合并）
-    var glowT = glowTexture(), glowMatS = new T.SpriteMaterial({ map: glowT, transparent: true, depthWrite: false, blending: T.AdditiveBlending, opacity: 0.8 });
-    LANTERNS.forEach(function (p) { var sp = new T.Sprite(glowMatS); sp.position.set(p[0], 8.3, p[1]); sp.scale.set(3.2, 3.2, 1); sp.userData.keep = true; scene.add(sp); });
-
     // 标题牌（红幕上方的蓝金横带）
     if (opt.title) {
       var tt = tex(512, 96, function (g, w, h) { g.clearRect(0, 0, w, h); g.fillStyle = "#f6d684"; g.font = "bold 58px " + KAI; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(String(opt.title).slice(0, 12), w / 2, h / 2 + 3); });
@@ -321,7 +319,7 @@
     // ---------- 追光光柱 ----------
     var coneMats = [], cones = [], cg = new T.CylinderGeometry(0.12, 1, 1, 20, 1, true);
     for (i = 0; i < 3; i++) {
-      var cm = new T.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: 0.09, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }), cn = new T.Mesh(cg, cm); cn.userData.keep = true; scene.add(cn); cones.push(cn); coneMats.push(cm);
+      var cm = new T.MeshBasicMaterial({ color: 0xc9a878, transparent: true, opacity: 0.02, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }), cn = new T.Mesh(cg, cm); cn.userData.keep = true; scene.add(cn); cones.push(cn); coneMats.push(cm);
     }
     var UP = new T.Vector3(0, 1, 0), vFrom = new T.Vector3(), vTo = new T.Vector3(), vDir = new T.Vector3();
     function placeCone(m, from, to, rb) {
@@ -334,12 +332,13 @@
     function mkTexture(canvas2) { var t = new T.CanvasTexture(canvas2); t.colorSpace = T.SRGBColorSpace; return t; }
     function getActor(id, cv) {
       var A = actors[id]; if (A) return A;
-      var t = mkTexture(cv), sp = new T.Sprite(new T.SpriteMaterial({ map: t, transparent: true, depthWrite: false })); sp.renderOrder = 3; scene.add(sp);
+      // depthTest 关掉：演员是台上主角，不能被幕布/翼幕/合并后的静态几何遮掉
+      var t = mkTexture(cv), sp = new T.Sprite(new T.SpriteMaterial({ map: t, transparent: true, depthWrite: false, depthTest: false })); sp.renderOrder = 6; scene.add(sp);
       var sh = new T.Mesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: shadowT, transparent: true, depthWrite: false })); sh.rotation.x = -Math.PI / 2; sh.renderOrder = 1; scene.add(sh);
       A = actors[id] = { sprite: sp, shadow: sh, tex: t, seen: false }; return A;
     }
-    var boxGroup = new T.Group(), boxMesh = new T.Mesh(boxGeo, new T.MeshStandardMaterial({ color: 0x3a2448, roughness: 0.6, emissive: 0x1a0c24, emissiveIntensity: 0.6 }));
-    var clothMesh = new T.Mesh(boxGeo, new T.MeshStandardMaterial({ color: 0xd22838, roughness: 0.8, emissive: 0x500a12, emissiveIntensity: 0.6 }));
+    var boxGroup = new T.Group(), boxMesh = new T.Mesh(boxGeo, new T.MeshStandardMaterial({ color: 0x33203c, roughness: 0.65, emissive: 0x100818, emissiveIntensity: 0.15 }));
+    var clothMesh = new T.Mesh(boxGeo, new T.MeshStandardMaterial({ color: 0xb82432, roughness: 0.85, emissive: 0x2a050a, emissiveIntensity: 0.15 }));
     var bandMesh = new T.Mesh(boxGeo, gold);
     boxGroup.visible = false; boxGroup.add(boxMesh); boxGroup.add(clothMesh); boxGroup.add(bandMesh); scene.add(boxGroup);
     var lionSprite = null, lionTex = null;
@@ -363,27 +362,32 @@
       // k：整体亮度（0.4~1.4）；mood：灯光颜色；spotX：追光跟着谁（游戏坐标 x）；narrow：单人追光
       setLights: function (kk, mood, spotX, narrow) {
         var f = Math.max(0.3, Math.min(1.5, kk)), sx = spotX * 0.8 + 0, rb = narrow ? 1.0 : 1.7;
-        renderer.toneMappingExposure = (1.0 + 0.2 * BRIGHT) * (0.7 + 0.3 * f);
-        lightsHemi.intensity = 2.1 * (0.55 + 0.45 * f); lightsAmb.intensity = 0.8 * (0.5 + 0.5 * f);
-        keyL.intensity = 60 * f; keyR.intensity = 60 * f; topLight.intensity = 14 * f; hallWarm.intensity = 16 * (0.5 + 0.5 * f);
-        follow.intensity = 80 * f * (narrow ? 1.4 : 1); follow.angle = narrow ? Math.PI / 11 : Math.PI / 7.5;
+        renderer.toneMappingExposure = (0.92 + 0.12 * BRIGHT) * (0.78 + 0.22 * f);
+        lightsHemi.intensity = 1.18 * (0.62 + 0.38 * f); lightsAmb.intensity = 0.30 * (0.6 + 0.4 * f);
+        keyL.intensity = 46 * f; keyR.intensity = 46 * f; topLight.intensity = 11 * f;
+        hallWarm.intensity = 6 * (0.5 + 0.5 * f); houseWash.intensity = 12 * (0.6 + 0.4 * f);
+        follow.intensity = 52 * f * (narrow ? 1.3 : 1); follow.angle = narrow ? Math.PI / 11 : Math.PI / 7.5;
         follow.position.set(sx * 0.4, 9, -7.5); follow.target.position.set(sx, 0.8, -9.8);
         follow.color.setRGB(Math.min(1, 0.55 + mood[0] / 580), Math.min(1, 0.55 + mood[1] / 580), Math.min(1, 0.55 + mood[2] / 580));
         var tops = [[-3.8, 8.6, -7.0], [0, 8.8, -7.0], [3.8, 8.6, -7.0]];
         for (i = 0; i < 3; i++) {
           var tx = tops[i][0] * 0.35 + sx * 0.65;
           placeCone(cones[i], tops[i], [tx, SY + 0.02, -9.8], rb + (i === 1 ? 0.3 : 0));
-          coneMats[i].color.setRGB(mood[0] / 255, mood[1] / 255, mood[2] / 255); coneMats[i].opacity = 0.04 + 0.07 * Math.max(0, f - 0.3);
+          // 光柱只留极淡的一层，不再叠出大片亮粉色三角
+          coneMats[i].color.setRGB(mood[0] / 255 * 0.55, mood[1] / 255 * 0.55, mood[2] / 255 * 0.55);
+          coneMats[i].opacity = 0.012 + 0.018 * Math.max(0, f - 0.3);
         }
       },
       beginActors: function () { for (var id in actors) actors[id].seen = false; },
       // o: {x,y,z(游戏坐标的头像圆心), R, sx, opacity, rot, canvas, shadow(0~1)}
       setActor: function (id, o) {
-        var A = getActor(id, o.canvas), p = g2t(o.x, o.y, o.z), R = o.R;
-        A.seen = true; A.tex.needsUpdate = true; A.sprite.visible = true;
-        A.sprite.position.set(p[0], p[1] - 0.381 * R, p[2]); A.sprite.scale.set(3.048 * R * Math.max(0.02, Math.abs(o.sx)), 3.619 * R, 1);
-        A.sprite.material.rotation = o.rot || 0; A.sprite.material.opacity = o.opacity;
-        A.shadow.visible = true; A.shadow.position.set(p[0], SY + 0.006, p[2]); A.shadow.scale.set(R * 1.9, R * 0.8, 1); A.shadow.material.opacity = Math.min(1, o.opacity);
+        var A = getActor(id, o.canvas), p = g2t(o.x, o.y, o.z), R = (typeof o.R === "number" && o.R > 0.01) ? o.R : 1;
+        var op = (typeof o.opacity === "number" && isFinite(o.opacity)) ? Math.max(0, Math.min(1, o.opacity)) : 1;
+        var sx = (typeof o.sx === "number" && isFinite(o.sx)) ? o.sx : 1;
+        A.seen = true; A.tex.needsUpdate = true; A.sprite.visible = op > 0.01;
+        A.sprite.position.set(p[0], p[1] - 0.381 * R, p[2]); A.sprite.scale.set(3.048 * R * Math.max(0.02, Math.abs(sx)), 3.619 * R, 1);
+        A.sprite.material.rotation = o.rot || 0; A.sprite.material.opacity = op;
+        A.shadow.visible = op > 0.01; A.shadow.position.set(p[0], SY + 0.006, p[2]); A.shadow.scale.set(R * 1.9, R * 0.8, 1); A.shadow.material.opacity = Math.min(1, op) * 0.7;
       },
       endActors: function () { for (var id in actors) if (!actors[id].seen) { actors[id].sprite.visible = false; actors[id].shadow.visible = false; } },
       setBox: function (rise, cloth, lift, xg) {

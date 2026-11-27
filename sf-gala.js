@@ -790,8 +790,10 @@
         var gm = actorGeom(a, t), cv = actorCanvas(a), gx = cv.getContext("2d"), AW = SF.gala3d.AW;
         gx.clearRect(0, 0, AW, SF.gala3d.AH); gx.save(); gx.translate(160, 150); bodyOn(gx, a, 105, t, gm.speaking); gx.restore();
         gx.font = "26px sans-serif"; gx.fillStyle = "rgba(255,235,190,.95)"; gx.textAlign = "center"; gx.textBaseline = "middle"; gx.fillText(nm(a.id), 160, 350);
-        var fade = clamp((7.2 - Math.abs(a.x)) / 1.6, 0, 1);
-        g3.setActor(a.id, { x: a.x, y: gm.yc, z: a.z, R: gm.R, sx: a.sx, opacity: gm.dimA * fade * a.al, rot: -(a.rot + a.tilt), canvas: cv });
+        // 淡出只用于「退场走向侧台」；演出中不再因为演员 x 还偏外而把整块头像抹成全透明
+        var fade = a.exit ? clamp((7.2 - Math.abs(a.x)) / 1.6, 0, 1) : 1;
+        var op = a.exit ? gm.dimA * fade * a.al : Math.max(0.35, gm.dimA * fade * a.al);
+        g3.setActor(a.id, { x: a.x, y: gm.yc, z: a.z, R: gm.R, sx: a.sx, opacity: op, rot: -(a.rot + a.tilt), canvas: cv });
         var tp = SF.gala3d.g2t(a.x, gm.yc, a.z), pr = g3.project3(tp[0], tp[1], tp[2]);
         a._p = pr ? { x: pr[0], y: pr[1], r: gm.R * pr[2] } : null;
       });
