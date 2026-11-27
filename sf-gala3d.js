@@ -103,9 +103,6 @@
         for (var i = 0; i < str.length; i++) g.fillText(str.charAt(i), w / 2, 52 + i * 62);
       });
     }
-    function shadowTexture() {
-      return tex(128, 128, function (g, w, h) { var r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, "rgba(0,0,0,.55)"); r.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = r; g.fillRect(0, 0, w, h); });
-    }
     function texMat(t) { return new T.MeshStandardMaterial({ map: t, roughness: 0.9, side: T.DoubleSide }); }
     var goldSilkMat = new T.MeshStandardMaterial({ map: goldSilk, roughness: 0.92, emissive: 0x3a280e, emissiveIntensity: 0.14, side: T.DoubleSide });
     var carpetMat = texMat(carpet);
@@ -327,16 +324,11 @@
       m.position.set((from[0] + to[0]) / 2, (from[1] + to[1]) / 2, (from[2] + to[2]) / 2); m.quaternion.setFromUnitVectors(UP, vDir); m.scale.set(rb, len, rb);
     }
 
-    // ---------- 台上头像牌 / 影子 / 魔术箱 / 舞狮布 / 观众头像牌 ----------
-    var actors = {}, shadowT = shadowTexture(), guests = {}, emptyState = {};
+    // ---------- 魔术箱 / 舞狮布 / 观众头像牌 ----------
+    // 台上演员不再用 WebGL Sprite：由 sf-gala.js 用 projectGame 画到上层 2D 画布。
+    // 远程头像会污染 canvas，iOS 上传成 WebGL 纹理会失败，头像会整块消失。
+    var guests = {}, emptyState = {};
     function mkTexture(canvas2) { var t = new T.CanvasTexture(canvas2); t.colorSpace = T.SRGBColorSpace; return t; }
-    function getActor(id, cv) {
-      var A = actors[id]; if (A) return A;
-      // depthTest 关掉：演员是台上主角，不能被幕布/翼幕/合并后的静态几何遮掉
-      var t = mkTexture(cv), sp = new T.Sprite(new T.SpriteMaterial({ map: t, transparent: true, depthWrite: false, depthTest: false })); sp.renderOrder = 6; scene.add(sp);
-      var sh = new T.Mesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: shadowT, transparent: true, depthWrite: false })); sh.rotation.x = -Math.PI / 2; sh.renderOrder = 1; scene.add(sh);
-      A = actors[id] = { sprite: sp, shadow: sh, tex: t, seen: false }; return A;
-    }
     var boxGroup = new T.Group(), boxMesh = new T.Mesh(boxGeo, new T.MeshStandardMaterial({ color: 0x33203c, roughness: 0.65, emissive: 0x100818, emissiveIntensity: 0.15 }));
     var clothMesh = new T.Mesh(boxGeo, new T.MeshStandardMaterial({ color: 0xb82432, roughness: 0.85, emissive: 0x2a050a, emissiveIntensity: 0.15 }));
     var bandMesh = new T.Mesh(boxGeo, gold);
@@ -378,18 +370,6 @@
           coneMats[i].opacity = 0.012 + 0.018 * Math.max(0, f - 0.3);
         }
       },
-      beginActors: function () { for (var id in actors) actors[id].seen = false; },
-      // o: {x,y,z(游戏坐标的头像圆心), R, sx, opacity, rot, canvas, shadow(0~1)}
-      setActor: function (id, o) {
-        var A = getActor(id, o.canvas), p = g2t(o.x, o.y, o.z), R = (typeof o.R === "number" && o.R > 0.01) ? o.R : 1;
-        var op = (typeof o.opacity === "number" && isFinite(o.opacity)) ? Math.max(0, Math.min(1, o.opacity)) : 1;
-        var sx = (typeof o.sx === "number" && isFinite(o.sx)) ? o.sx : 1;
-        A.seen = true; A.tex.needsUpdate = true; A.sprite.visible = op > 0.01;
-        A.sprite.position.set(p[0], p[1] - 0.381 * R, p[2]); A.sprite.scale.set(3.048 * R * Math.max(0.02, Math.abs(sx)), 3.619 * R, 1);
-        A.sprite.material.rotation = o.rot || 0; A.sprite.material.opacity = op;
-        A.shadow.visible = op > 0.01; A.shadow.position.set(p[0], SY + 0.006, p[2]); A.shadow.scale.set(R * 1.9, R * 0.8, 1); A.shadow.material.opacity = Math.min(1, op) * 0.7;
-      },
-      endActors: function () { for (var id in actors) if (!actors[id].seen) { actors[id].sprite.visible = false; actors[id].shadow.visible = false; } },
       setBox: function (rise, cloth, lift, xg) {
         var p = g2t(xg, 1.2, -3.0), vis = rise > 0.01; boxGroup.visible = vis; if (!vis) return;
         var hgt = 2.4 * rise; boxMesh.scale.set(2.2, hgt, 1.8); boxMesh.position.set(p[0], SY + hgt / 2, p[2]);

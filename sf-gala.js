@@ -49,8 +49,18 @@
   function loadImg(url) {
     return new Promise(function (res) {
       if (!url) { res(null); return; }
-      var im = new Image(); im.onload = function () { res(im); }; im.onerror = function () { res(null); }; im.src = url;
-      setTimeout(function () { res(null); }, 2500);
+      var done = false;
+      function finish(v) { if (!done) { done = true; res(v); } }
+      // 先按 CORS 取：成功的话头像画进 canvas 不会污染，WebGL 纹理（观众席头像牌）才传得上去。
+      // 服务器不支持 CORS 就退回普通加载，2D 画面仍然能显示头像。
+      var im = new Image();
+      im.crossOrigin = "anonymous";
+      im.onload = function () { finish(im); };
+      im.onerror = function () {
+        var im2 = new Image(); im2.onload = function () { finish(im2); }; im2.onerror = function () { finish(null); }; im2.src = url;
+      };
+      im.src = url;
+      setTimeout(function () { finish(null); }, 2500);
     });
   }
   function rrect(g, x, y, w, h, r) {
@@ -762,10 +772,39 @@
     }
 
     // ----- 3D 画面（three.js）：把每一帧的状态交给 sf-gala3d.js -----
-    function actorCanvas(a) {
-      var cv = me.acv[a.id];
-      if (!cv) { cv = me.acv[a.id] = document.createElement("canvas"); cv.width = SF.gala3d.AW; cv.height = SF.gala3d.AH; }
-      return cv;
+    // 台上演员画在上层 2D 画布：位置 / 大小由 3D 相机投影得到，透视、斜侧、缩放都跟着镜头走。
+    // 不走 WebGL Sprite：角色头像是远程图片，会把 canvas 污染，iOS 上纹理上传失败 → 头像整块消失。
+    // 这块画布和「偷跑演员」共用，真机上已经验证能正常画出头像。
+    function drawActorsGL(t) {
+      if (!g3) return;
+      var list = me.actors.slice().sort(function (a, b) { return a.z - b.z; });
+      for (var n = 0; n < list.length; n++) {
+        var a = list[n];
+        if (a.sc <= 0.02) { a._p = null; continue; }
+        var gm = actorGeom(a, t), pr = g3.projectGame(a.x, gm.yc, a.z);
+        if (!pr || !isFinite(pr[0]) || !isFinite(pr[1])) { a._p = null; continue; }
+        var px = pr[0], py = pr[1], r = gm.R * pr[2];
+        if (r < 1 || px < -r * 2 || px > W + r * 2 || py < -r * 2 || py > H + r * 2) { a._p = null; continue; }
+        a._p = { x: px, y: py, r: r };
+        var fade = a.exit ? clamp((7.2 - Math.abs(a.x)) / 1.6, 0, 1) : 1;
+        var op = a.exit ? gm.dimA * fade * a.al : Math.max(0.35, gm.dimA * fade * a.al);
+        if (op <= 0.01) continue;
+        var foot = g3.projectGame(a.x, 1.2, a.z);
+        if (foot && isFinite(foot[0])) {
+          g.save(); g.globalAlpha = op * 0.4; g.fillStyle = "#000";
+          g.beginPath(); g.ellipse(foot[0], foot[1], r * 0.85, r * 0.2, 0, 0, 7); g.fill(); g.restore();
+        }
+        var sxv = (typeof a.sx === "number" && isFinite(a.sx)) ? a.sx : 1;
+        g.save();
+        g.translate(px, py); g.rotate(a.rot + a.tilt); g.scale(sxv, 1); g.globalAlpha = op;
+        bodyOn(g, a, r, t, gm.speaking);
+        g.restore();
+        g.save(); g.globalAlpha = op * 0.9;
+        g.font = Math.max(9, Math.min(15, r * 0.14)) + "px sans-serif";
+        g.fillStyle = "rgba(255,235,190,.95)"; g.textAlign = "center"; g.textBaseline = "top";
+        g.fillText(nm(a.id), px, py + r * 1.3);
+        g.restore();
+      }
     }
     function guestCanvas(id) {
       var cv = me.gcv[id];
@@ -784,20 +823,6 @@
       g3.setView(pos, me.yaw, me.pit, (0.46 - me.hy) * H);
       g3.setCurtain(me.open);
       g3.setLights(me.lightK, me.mood, me.spot, me.spotOnlyT > 0);
-      g3.beginActors();
-      me.actors.forEach(function (a) {
-        if (a.sc <= 0.02) { a._p = null; return; }
-        var gm = actorGeom(a, t), cv = actorCanvas(a), gx = cv.getContext("2d"), AW = SF.gala3d.AW;
-        gx.clearRect(0, 0, AW, SF.gala3d.AH); gx.save(); gx.translate(160, 150); bodyOn(gx, a, 105, t, gm.speaking); gx.restore();
-        gx.font = "26px sans-serif"; gx.fillStyle = "rgba(255,235,190,.95)"; gx.textAlign = "center"; gx.textBaseline = "middle"; gx.fillText(nm(a.id), 160, 350);
-        // 淡出只用于「退场走向侧台」；演出中不再因为演员 x 还偏外而把整块头像抹成全透明
-        var fade = a.exit ? clamp((7.2 - Math.abs(a.x)) / 1.6, 0, 1) : 1;
-        var op = a.exit ? gm.dimA * fade * a.al : Math.max(0.35, gm.dimA * fade * a.al);
-        g3.setActor(a.id, { x: a.x, y: gm.yc, z: a.z, R: gm.R, sx: a.sx, opacity: op, rot: -(a.rot + a.tilt), canvas: cv });
-        var tp = SF.gala3d.g2t(a.x, gm.yc, a.z), pr = g3.project3(tp[0], tp[1], tp[2]);
-        a._p = pr ? { x: pr[0], y: pr[1], r: gm.R * pr[2] } : null;
-      });
-      g3.endActors();
       g3.setBox(me.box.rise, me.box.cloth, me.box.lift, me.box.x);
       var L = me.lion;
       if (L && L.a.sc > 0.2 && L.t.sc > 0.2) {
@@ -814,6 +839,7 @@
       }
       g3.render();
       g.clearRect(0, 0, W, H);
+      drawActorsGL(t);
       drawFx(t); drawParticles(null); drawOverlay(t);
     }
 
@@ -886,7 +912,7 @@
       if (sk) {
         var a = sk.age, e = Math.min(ease(a / 0.5), ease((5.6 - a) / 0.5)), r = 42;
         var cx = sk.side > 0 ? W - r - 18 + (1 - e) * r * 3.2 : r + 18 - (1 - e) * r * 3.2, cy = H * 0.6;
-        g.fillStyle = "rgba(112,18,32,.96)"; rrect(g, cx - r * 1.15, cy - r * 0.95, r * 2.3, r * 2.5, r * 0.5); g.fill();
+        // 不再画模拟座椅的红底：只留圆形头像 + 金圈 + 白色台词气泡
         avatarAt(sk.id, cx, cy, r, 1);
         g.strokeStyle = "#ffd77a"; g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.stroke();
         if (e > 0.6) {
