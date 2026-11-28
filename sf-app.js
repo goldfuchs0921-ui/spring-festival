@@ -5,7 +5,7 @@
   var SPOTS = [
     { id: "watch", label: "守岁", en: "VIGIL", box: [340, 760, 580, 990], act: function () { return SF.watch.open(); } },
     { id: "stage", label: "春晚", en: "GALA", box: [780, 765, 1200, 1095], tag: [.45, .62], act: function () { return SF.gala.open(); } },
-    { id: "tree", label: "年度回忆", en: "MEMORIES", box: [15, 980, 455, 1335], tag: [.62, .4], locked: 1 },
+    { id: "tree", label: "年度回忆", en: "MEMORIES", box: [15, 980, 455, 1335], tag: [.62, .4], act: function () { return SF.memoir.open(); } },
     { id: "drum", label: "打年兽", en: "BEAT NIAN", box: [450, 1125, 845, 1315], act: function () { return SF.nian.open(); } },
     { id: "stall", label: "红包", en: "RED PACKET", box: [905, 1235, 1175, 1425], tag: [.1, .5], act: function () { return SF.rp.openStall(); } },
     { id: "board", label: "春联", en: "COUPLETS", box: [655, 1360, 915, 1605], tag: [.45, .5], act: function () { return SF.cp.open(); } },
@@ -90,6 +90,7 @@
         SF.fx.resize();
       }
       SF.fx.attach(root.querySelector(".sf-fx"));
+      if (SF.memoir) SF.memoir.refreshBadge();
       layout();
       if (window.ResizeObserver) { S.ro = new ResizeObserver(layout); S.ro.observe(view); }
       loadScene(true);
